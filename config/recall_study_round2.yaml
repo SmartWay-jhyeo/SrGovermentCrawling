@@ -1,0 +1,19 @@
+# 후보 필터 recall 측정 2차 표본(2026-09-17 추가). 1차 결과(양성 54건)가 기준 100건에 못 미쳐 시간창을 더 뽑는다.
+# 1차와 시간창이 겹치면 게이트 합산 시 같은 공고는 한 번만 센다. 1차의 면허 판정이 끝난 뒤 실행한다.
+schema_version: 1
+study_name: filter-recall-4992
+seed: 20260918                     # 1차(20260917)와 다른 시드 — 추가 표본
+range: {from: "2023-09-16", to: "2026-09-15"}   # 백필 job 범위와 같게
+window_minutes: 120
+windows_per_stratum: 12            # 연도 층마다 무작위 2시간 창 12개
+list:
+  service: bid_notice
+  operation: getBidPblancListInfoCnstwkPPSSrch
+  base_params: {inqryDiv: "1"}     # 공고게시일시
+  num_of_rows: 100
+filters:
+  NAME_DOJANG: {indstrytyNm: "도장"}      # 기존 백필 방식
+  CODE_4992: {indstrytyCd: "4992"}        # 문서화된 업종코드 검색조건(매칭 대상 필드는 문서에 없음)
+target_license_codes: ["4992"]
+target_min_positives: 100          # 정답 양성 공고가 이 수 이상일 때만 표본 충분으로 본다
+max_attempts: 3

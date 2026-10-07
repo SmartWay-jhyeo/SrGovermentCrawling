@@ -1,0 +1,18 @@
+# 후보 필터 recall 측정 설정. 표본 설계이며 결과는 추정치다.
+schema_version: 1
+study_name: filter-recall-4992
+seed: 20260917                     # 시간창 추출 재현용
+range: {from: "2023-09-16", to: "2026-09-15"}   # 백필 job 범위와 같게
+window_minutes: 120
+windows_per_stratum: 9             # 연도 층(2023~2026)마다 무작위 2시간 창 9개
+list:
+  service: bid_notice
+  operation: getBidPblancListInfoCnstwkPPSSrch
+  base_params: {inqryDiv: "1"}     # 공고게시일시
+  num_of_rows: 100
+filters:
+  NAME_DOJANG: {indstrytyNm: "도장"}      # 기존 백필 방식
+  CODE_4992: {indstrytyCd: "4992"}        # 문서화된 업종코드 검색조건(매칭 대상 필드는 문서에 없음)
+target_license_codes: ["4992"]
+target_min_positives: 100          # 정답 양성 공고가 이 수 이상일 때만 표본 충분으로 본다
+max_attempts: 3

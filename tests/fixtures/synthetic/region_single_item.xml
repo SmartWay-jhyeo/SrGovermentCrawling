@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SYNTHETIC TEST FIXTURE: 실제 API 응답이 아님 -->
+<response>
+  <header>
+    <resultCode>00</resultCode>
+    <resultMsg>정상</resultMsg>
+  </header>
+  <body>
+    <items>
+      <item>
+        <bidNtceNo>R99BK99990001</bidNtceNo>
+        <bidNtceOrd>000</bidNtceOrd>
+        <lmtSno>1</lmtSno>
+        <prtcptPsblRgnNm>합성도 합성군</prtcptPsblRgnNm>
+        <rgstDt>2099-01-01 00:00:00</rgstDt>
+        <bsnsDivNm></bsnsDivNm>
+      </item>
+    </items>
+    <numOfRows>10</numOfRows>
+    <pageNo>1</pageNo>
+    <totalCount>1</totalCount>
+  </body>
+</response>

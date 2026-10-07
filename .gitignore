@@ -1,0 +1,48 @@
+.env
+.env.*
+!.env.example
+.local/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+*.sqlite
+*.sqlite3
+*.db
+*.log
+CLAUDE.local.md
+.DS_Store
+Thumbs.db
+
+# P0 구현에서 추가 (기존 규칙 유지)
+*.egg-info/
+build/
+dist/
+*.sqlite3-wal
+*.sqlite3-shm
+*.sqlite3-journal
+
+# 로컬 앱 인증정보와 다른 SQLite 확장자의 임시 파일
+.streamlit/secrets.toml
+.claude/settings.local.json
+.claude/*.lock
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite-journal
+*.db-wal
+*.db-shm
+*.db-journal
+
+# 저장 위치를 바꿔도 실데이터 산출물은 소스에 포함하지 않는다
+/raw/
+/exports/
+/reports/
+/logs/
+**/ui-cache/
+
+# 시공노트 실데이터 검토용 추출본
+/outputs/sigongnote_market_stage1/

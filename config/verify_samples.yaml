@@ -1,0 +1,50 @@
+# P0 실연동 검증(verify-api) 표본 계획.
+# 이 파일은 표본 선정 기준과 호출 한도다. API 계약이나 실제 결과가 아니다.
+# 공고번호는 docs/SOURCES.md의 공개 공고 사례(S05~S07)에서 가져왔다. 결과를 기대값으로 쓰지 않고 대조 대상으로만 쓴다.
+schema_version: 1
+
+max_samples: 20            # 목표 최대 표본 수. 실제 수는 호출예산이 먼저 제한한다.
+
+industry_lookup:
+  # 참고자료 응답 예시에 indstrytyClsfcCd=49(건설업)가 나온다. 예시값이므로 실응답으로 확인한다.
+  params:
+    indstrytyClsfcCd: "49"
+  num_of_rows: 100
+  max_pages: 3
+  # 업종명 비교는 가운뎃점·공백을 제거한 문자열로 한다. 코드값은 실응답에서만 얻는다.
+  target_name_keywords: ["도장", "방수", "석공"]
+  fallback_name_queries: ["도장", "방수", "석공"]
+
+fixed_notices:
+  - bid_ntce_no: "R26BK01695462"
+    label: "S05 성남시 소재지 제한·습식방수 주력분야 사례(공개 PDF)"
+  - bid_ntce_no: "R26BK01448245"
+    label: "S06 가평군·남양주시 복수지역 사례(공개 PDF)"
+  - bid_ntce_no: "R26BK01485179"
+    label: "S07 참가 실적제한과 적격심사 구분 사례(공개 PDF)"
+
+discovery:
+  # 참고자료: getBidPblancListInfoCnstwkPPSSrch의 indstrytyNm은 '업종명 일부 입력시에도 조회 가능'.
+  # 서버 측 업종 필터의 정확성은 미검증이므로 표본 추출에만 쓰고 전수 수집 근거로 쓰지 않는다.
+  params:
+    inqryDiv: "1"
+    indstrytyNm: "도장"
+  num_of_rows: 30
+  pick_per_window: 2
+  windows:
+    - {label: "2023", inqryBgnDt: "202305150000", inqryEndDt: "202305212359"}
+    - {label: "2024", inqryBgnDt: "202405130000", inqryEndDt: "202405192359"}
+    - {label: "2025", inqryBgnDt: "202505120000", inqryEndDt: "202505182359"}
+    - {label: "2026", inqryBgnDt: "202605110000", inqryEndDt: "202605172359"}
+
+per_sample:
+  notice_num_of_rows: 50
+  notice_max_pages: 2
+  opening_num_of_rows: 50
+  opening_max_pages: 2
+  roster_num_of_rows: 100
+  roster_max_pages: 5
+  roster_max_units: 2        # 개찰단위가 여러 개면 최초·마지막 단위만 명부를 받는다(예산 절약). 나머지는 NOT_QUERIED.
+  include_mfrc_eval: true
+  include_change_history_when_amended: true
+  include_rebid_failing_when_present: true

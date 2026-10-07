@@ -1,0 +1,145 @@
+# P0 실응답 검증 근거 (2026-09-16 KST)
+# tools/build_api_catalog.py --live-evidence 로 config/api_catalog.yaml에 병합한다.
+# 여기에는 공개 공고번호·업종코드·집계값만 적는다. 업체명·사업자번호·원본 응답은 .local(Git 제외)에만 있다.
+# LIVE_VERIFIED는 아래 표본에서 관측한 사실이다. 전 기간·전 공고의 완전성 보증이 아니다.
+schema_version: 1
+checked_on_kst: "2026-09-16"
+key_format_used: decoded   # 포털 Decoding 키를 클라이언트가 1회 URL 인코딩. 75회 모두 인증 성공
+total_http_calls: 75
+runs:
+  - {run_id: verify-20260916T225918-8629be3e, calls: 8, status: PARTIAL, note: "최초 소량 호출(상한 8)"}
+  - {run_id: verify-20260916T225953-41002ec3, calls: 10, status: PARTIAL, note: "이어받기, 상한 10"}
+  - {run_id: verify-20260916T230100-c03ddb1e, calls: 24, status: PARTIAL, note: "이어받기, 연도 탐색 포함, 상한 24"}
+  - {run_id: verify-20260916T230325-4979399e, calls: 33, status: COMPLETED, note: "이어받기, 연도별 개찰완료 표본, 상한 40"}
+sample_notices:
+  - {bid_ntce_no: R26BK01695462, source: "S05 고정", result: "개찰완료, 참가 51, 명부 51, 허용지역 경기도 성남시"}
+  - {bid_ntce_no: R26BK01448245, source: "S06 고정", result: "개찰완료, 참가 48, 명부 48, 허용지역 경기도 남양주시·가평군(2행)"}
+  - {bid_ntce_no: R26BK01485179, source: "S07 고정", result: "000 등록공고 → 001 취소공고, 개찰결과 없음, 허용지역 경기도"}
+  - {bid_ntce_no: "20230446915", source: "탐색 2023(초기 선정, 취소공고)", result: "차수 000~002, 002 취소공고, 개찰결과 없음"}
+  - {bid_ntce_no: "20240507578", source: "탐색 2024(초기 선정, 취소공고)", result: "차수 000~001, 001 취소공고, 기초금액까지만 조회"}
+  - {bid_ntce_no: "20230517961", source: "탐색 2023", result: "개찰완료, 참가 845(명부 미조회: 페이지 한도 초과), 허용지역 경상북도"}
+  - {bid_ntce_no: "20240508583", source: "탐색 2024", result: "개찰완료, 참가 35, 명부 35, 허용지역 강원특별자치도 강릉시"}
+  - {bid_ntce_no: R25BK00832425, source: "탐색 2025", result: "개찰완료, 참가 176, 명부 176, 허용지역 인천광역시"}
+  - {bid_ntce_no: R26BK01505825, source: "탐색 2026", result: "개찰완료, 참가 198, 명부 198, 허용지역 충청북도 5개 시·군"}
+
+services:
+  bid_notice: {access_status: LIVE_VERIFIED}
+  bid_award: {access_status: LIVE_VERIFIED}
+  industry_law: {access_status: LIVE_VERIFIED}
+  user_info: {access_status: UNVERIFIED, note: "이번 검증에서 호출하지 않음(후순위)"}
+
+operations:
+  industry_law.getIndstrytyBaseLawrgltInfoList:
+    status: LIVE_VERIFIED
+    calls: 2
+    observations:
+      - "indstrytyClsfcCd=49 조회 totalCount 111, 2페이지(100+11) 완전 수집. indstrytyClsfcNm=건설업"
+      - "JSON items는 리스트, totalCount·pageNo·numOfRows는 정수"
+      - "응답 필드 12개. Swagger의 undefined 필드는 없음"
+  bid_notice.getBidPblancListInfoCnstwk:
+    status: LIVE_VERIFIED
+    calls: 9
+    observations:
+      - "inqryDiv=2 + bidNtceNo로 9개 공고, 차수 행 13개 조회. 한 공고의 모든 차수(000~002)가 함께 반환됨"
+      - "응답 필드 143개 = 참고자료 1.2 필드 전체(befBidBbancNo, rgnLmtBidLocplcJdgmBssCd/Nm, sucsfbidMthdAppStd 포함)"
+      - "구 나라장터 번호(11자리, 예 20230517961)와 차세대 번호(R25BK…, R26BK…) 모두 조회됨"
+      - "cnstrtsiteRgnNm은 시·군 단위(경기도 성남시) 또는 시·도 단위(충청북도) 둘 다 관측"
+  bid_notice.getBidPblancListInfoCnstwkPPSSrch:
+    status: LIVE_VERIFIED
+    calls: 4
+    observations:
+      - "inqryDiv=1, 7일 창, indstrytyNm=도장: totalCount 2023 421, 2024 295, 2025 302, 2026 332 (첫 페이지 30행만 수신)"
+      - "응답 필드 143개. 참고자료에만 있던 VAT 있음, Swagger에만 있던 d2bMngRgnLmtYn 없음"
+      - "업종명 필터 결과에 주공종이 건축공사업인 공고도 포함. 상세 조회한 필터 결과 공고 6건은 모두 면허제한에 4992가 있었음(필터가 면허제한 업종에 매칭되는 것으로 보이나 표본 수준)"
+  bid_notice.getBidPblancListInfoLicenseLimit:
+    status: LIVE_VERIFIED
+    calls: 9
+    observations:
+      - "inqryDiv=2 + bidNtceNo + bidNtceOrd 조회 성공, 행 22개. 응답 bidNtceOrd는 요청 차수와 같음"
+      - "lcnsLmtNm은 '업종명/코드' 형식(예 도장ㆍ습식ㆍ방수ㆍ석공사업/4992)"
+      - "indstrytyMfrcFldList 관측값: [1^습식·방수공사], [1^도장공사], 빈값"
+      - "한 공고에 제한그룹 1~3과 그룹 내 순번이 여러 개인 사례 관측. 그룹 간 AND·OR 의미는 응답만으로 확인 불가"
+      - "데이터 결함: 20230517961 마지막 행(lmtGrpNo 3)에서 값이 한 칸씩 밀림(indstrytyMfrcFldList=등록일시, rgstDt='공사', bsnsDivNm 빈값)"
+  bid_notice.getBidPblancListInfoPrtcptPsblRgn:
+    status: LIVE_VERIFIED
+    calls: 9
+    observations:
+      - "행 14개. 시·도 단위(경기도, 경상북도, 인천광역시)와 시·군 단위(경기도 성남시, 강원특별자치도 강릉시) 모두 관측"
+      - "복수지역은 행 단위로 반환(R26BK01448245 2행, R26BK01505825 5행), lmtSno가 행마다 다름"
+      - "문서 설명의 제한그룹번호(lmtGrpNo)는 실제 응답에도 없음"
+  bid_notice.getBidPblancListInfoCnstwkBsisAmount:
+    status: LIVE_VERIFIED
+    calls: 9
+    observations:
+      - "inqryDiv=2 + bidNtceNo만으로 조회 성공(Swagger가 필수로 표기한 inqryBgnDt/inqryEndDt 없이 동작)"
+      - "행 6개, bidClsfcNo=0. 기초금액이 없는 공고는 resultCode 00 + items [] + totalCount 0"
+      - "응답 필드 32개(참고자료에만 있던 smkpAmt/smkpAmtYn 포함)"
+  bid_notice.getBidPblancListEvaluationIndstrytyMfrcInfo:
+    status: LIVE_VERIFIED
+    calls: 8
+    observations:
+      - "행 3개(2개 공고). 대부분 공고는 0건. 필드명은 소문자(참고자료 표의 대문자 표기와 다름)"
+      - "관측값: tmpNm 도장ㆍ습식ㆍ방수ㆍ석공사업, indstrytyMfrcFldNm 습식·방수공사, bidwinrSlctnBssCd 계040002"
+  bid_notice.getBidPblancListInfoChgHstryCnstwk:
+    status: DOCUMENTED
+    calls: 2
+    observations:
+      - "호출 2회 모두 resultCode 00, 결과 0건(취소공고가 있는 공고였지만 변경이력 행 없음). 응답 필드는 미확인"
+  bid_award.getOpengResultListInfoCnstwk:
+    status: LIVE_VERIFIED
+    calls: 8
+    observations:
+      - "inqryDiv=4 + bidNtceNo 조회. 개찰단위 행 6개, 모두 progrsDivCdNm=개찰완료, 키 (bidNtceNo, bidNtceOrd, bidClsfcNo, rbidNo)"
+      - "결과 없음은 resultCode 00 + totalCount 0 + body에 items 키 자체가 없음(입찰공고 서비스의 items [] 와 다름)"
+      - "opengCorpInfo는 '^' 구분 5개 요소"
+  bid_award.getOpengResultListInfoOpengCompt:
+    status: LIVE_VERIFIED
+    calls: 7
+    observations:
+      - "네 키 요청으로 명부 5개 단위 완전 수집(51, 48, 35, 176, 198행). 176·198행은 numOfRows 100으로 2페이지"
+      - "rmrk 관측값: 정상, 낙찰하한선 미달, 전자입찰취소신청. 정상이 아닌 행은 opengRank가 빈값"
+      - "응답 필드 20개(참고자료에만 있던 평가점수 4종 포함)"
+  bid_award.getScsbidListSttusCnstwk:
+    status: LIVE_VERIFIED
+    calls: 8
+    observations:
+      - "inqryDiv=4 + bidNtceNo 조회. 낙찰 행 6개, 키가 개찰결과 단위와 일치"
+      - "prtcptCnum이 개찰결과 목록 값과 6건 모두 같음. 명부를 받은 5건에서 최종낙찰자 사업자번호 = 명부 개찰순위 1위"
+
+findings:
+  join_paths_live:
+    notice_to_license: LIVE_VERIFIED
+    notice_to_allowed_region: LIVE_VERIFIED
+    notice_to_basis_amount: LIVE_VERIFIED
+    notice_to_opening_unit: LIVE_VERIFIED
+    opening_unit_to_roster: LIVE_VERIFIED
+    opening_unit_to_final_award: LIVE_VERIFIED
+  join_note: "개찰단위 6개가 모두 (bidNtceNo, bidNtceOrd) 공고 차수 행과 연결됨. 관측 표본은 모두 bidClsfcNo=0, rbidNo=000이라 분할·재입찰 키 동작은 미확인"
+  prtcptCnum:
+    meaning_status: LIVE_VERIFIED
+    observed_meaning: "개찰완료 명부(getOpengResultListInfoOpengCompt)의 전체 행 수와 같다. 비고가 정상·낙찰하한선 미달·전자입찰취소신청인 행을 모두 포함한다. 유효 투찰 수(정상)가 아니다"
+    evidence: "5개 개찰단위에서 prtcptCnum = 명부 행 수 = 고유 사업자번호 수"
+    unverified: "공동수급 투찰 표현, 무효 처리 행의 표기, 재입찰 회차별 값"
+  industry_codes:
+    code: "4992"
+    name: "도장ㆍ습식ㆍ방수ㆍ석공사업"
+    use_yn: "Y"
+    base_law: "건설산업기본법"
+    status: LIVE_VERIFIED
+    related_codes_observed:
+      - {code: "4926", name: "해외건설업(전문건설업-습식·방수공사업)", use_yn: "Y", base_law: "해외건설촉진법"}
+      - {code: "4927", name: "해외건설업(전문건설업-석공사업)", use_yn: "Y", base_law: "해외건설촉진법"}
+      - {code: "4928", name: "해외건설업(전문건설업-도장공사업)", use_yn: "Y", base_law: "해외건설촉진법"}
+    main_fields_observed: ["도장공사", "습식·방수공사"]
+    note: "indstrytyClsfcCd=49 전체 111건 중 도장·방수·석공 키워드 일치 4건. 조회시점 현재값이며 과거 업종 이력이 아니다. 석공 주력분야 표기는 이번 표본에서 관측되지 않음"
+  history_availability:
+    "2023": "공고 목록·면허·지역·기초금액·개찰결과·낙찰 조회됨(20230517961). 명부는 참가 845로 미조회"
+    "2024": "공고 목록·면허·지역·기초금액·개찰결과·명부·낙찰 조회됨(20240508583)"
+    "2025": "공고 목록·면허·지역·기초금액·개찰결과·명부·낙찰 조회됨(R25BK00832425)"
+    "2026": "공고 목록·면허·지역·기초금액·개찰결과·명부·낙찰 조회됨(R26BK01695462 등)"
+  response_format:
+    - "모든 호출 HTTP 200, Content-Type application/json;charset=UTF-8, header.resultCode 00 / resultMsg 정상"
+    - "items는 리스트. 참고자료·Swagger의 items.item 구조와 다름"
+    - "정상 무자료는 resultCode 00 + totalCount 0. 코드 03은 관측되지 않음"
+    - "숫자형 envelope 필드(totalCount, pageNo, numOfRows)는 JSON 정수, 항목 값은 모두 문자열"
+    - "오류 응답(인증 실패·쿼터 초과 등)은 이번에 발생하지 않아 형식 미확인"

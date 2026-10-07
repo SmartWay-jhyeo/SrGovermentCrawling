@@ -1,0 +1,65 @@
+# 최근 3개년 완전 수집(backfill) 설정.
+# - 수집 범위는 job을 처음 만들 때 고정된다(실행 날짜가 바뀌어도 같은 job을 이어서 수집).
+# - 표본 추출이 아니라 범위 안 목록 전체 페이지를 받고, 후보 공고의 상세를 전부 받는다.
+# - 일일 한도는 OpenAPI 서비스 단위 합산이다(.env BACKFILL_MAX_CALLS_PER_SERVICE_PER_DAY, 기본 800).
+#   입찰공고정보서비스는 목록+면허+지역 호출 합계, 낙찰정보서비스는 개찰+낙찰+명부 호출 합계가 800 이하다.
+schema_version: 1
+# 2026-09-17: 후보 필터를 업종명(indstrytyNm=도장)에서 문서화된 업종코드(indstrytyCd=4992)로 바꿔 새 job으로 분리.
+#   이전 job(dojang-seupsik-3y, 업종명 필터)의 누적 데이터와 면허제한 조회 결과는 DB에 그대로 남고 재사용된다.
+job_name: dojang-seupsik-3y-cd4992
+
+range:
+  years_back: 3          # 시작일 = (job 생성일 KST) - 3년
+  end: yesterday         # 끝일 = job 생성일 전날(KST). from/to를 지정하면 그 값을 쓴다.
+  # from: "2023-09-16"
+  # to: "2026-09-15"
+
+list:
+  # 후보 공고 필터링 단계. indstrytyCd는 PPSSrch 문서의 요청변수(업종코드)지만 어떤 필드와 매칭하는지는 문서에 없다.
+  # recall 측정(config/recall_study.yaml)으로 필터 밖 누락을 추정한다. 게이트 통과 전 run은 막힌다.
+  service: bid_notice
+  operation: getBidPblancListInfoCnstwkPPSSrch
+  params:
+    inqryDiv: "1"          # 공고게시일시 기준
+    indstrytyCd: "4992"
+  window_days: 7           # 실연동 확인 범위(7일 창 정상)
+  overlap_minutes: 1       # 경계 포함 여부 미확인 → 1분 겹침 + 키 중복제거
+  num_of_rows: 100         # 실연동 확인값. 더 큰 값은 미검증
+  max_partition_restarts: 3
+
+sweep:
+  # 기간 스윕 수집(2026-09-20 전환). 공고마다 상세를 부르지 않고 날짜 구간으로 한 번에 받는다.
+  # 실측(2025-06-10 하루): 목록 884행, 면허제한 2,668행, 참가가능지역 1,634행, 개찰결과 753행. numOfRows 999 동작 확인.
+  job_name: sweep-3y
+  num_of_rows: 999        # 실측 확인값. 더 큰 값은 미검증
+  window_days: 1          # 하루 단위 파티션(구간 끝은 다음 구간과 1분 겹침)
+  max_attempts: 3
+  max_restarts: 3
+  stages: [LIST, LICENSE, REGION, OPENING]
+  # LIST는 업종 필터 없이 전 공사공고를 받는다. 관련성은 면허제한 행으로 직접 판정한다.
+
+recall_gate:
+  # 무작위 시간창 recall 측정(모든 연구 합산, 같은 필터 파라미터 기준)이 이 기준을 넘어야 backfill run이 허용된다.
+  min_positives: 100          # 정답 양성(면허제한에 4992가 있는 공고) 최소 수
+  min_recall_lower95: 0.95    # recall Wilson 95% 하한
+
+relevance:
+  # 면허제한 응답에서 이 코드가 제한면허 또는 허용업종에 있으면 관련 공고로 본다(업종 API 실응답으로 확인한 코드).
+  target_license_codes: ["4992"]
+  detail_for_unknown: true   # 면허제한 행이 없거나 해석 불가인 공고도 지역·개찰은 받는다(누락 방지)
+
+detail:
+  license: true              # getBidPblancListInfoLicenseLimit (공고 최신 차수)
+  region: true               # getBidPblancListInfoPrtcptPsblRgn (관련·미확인 공고, 최신 차수)
+  opening: true              # getOpengResultListInfoCnstwk (취소공고 제외, 개찰일시 경과 후)
+  award: false               # getScsbidListSttusCnstwk (호출량 절약을 위해 기본 끔)
+  roster: false              # getOpengResultListInfoOpengCompt (명부 전체. 기본 끔)
+  roster_max_participants: 500
+  opening_defer_days: 1            # 개찰일시 다음 날부터 조회
+  opening_empty_recheck_days: 14   # 개찰일시 후 이 기간 안에 결과 0건이면 나중에 다시 조회
+  detail_page_size: 100
+  detail_max_pages: 20
+  max_task_attempts: 3
+
+limits: {}
+  # 서비스별 한도 조정 예: bid_award: 600

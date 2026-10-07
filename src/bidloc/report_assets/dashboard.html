@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+<meta name="color-scheme" content="light dark"><title>면허 입지 분석기 | 지역과 공고의 근거</title><style>/* INLINE_CSS */</style></head>
+<body><header class="topbar"><a class="brand" href="#overview"><span class="mark" aria-hidden="true">입</span> 면허 입지 분석기 <span class="tag">LOCAL</span></a><button id="theme" type="button" aria-label="테마 변경">화면 테마</button></header>
+<main id="overview"><div class="heading"><div><p class="eyebrow">CONSTRUCTION · LOCATION LAB</p><h1>지역을 비교하고,<br class="mobile-only"> 근거를 확인하세요.</h1><p class="lede">같은 조건의 공사 공고로 보는 지역별 기회와 관측 경쟁도</p></div><div class="snapshot"><span id="collection" class="badge">데이터 확인 중</span><p><!-- PERIOD --></p><small>스냅샷 생성 <span id="generated"><!-- GENERATED --></span></small></div></div>
+<nav class="tabs" aria-label="분석 섹션"><a href="#location">입지 비교</a><a href="#unitprice">단가계약</a><a href="#shortlist">마감 전 공고</a><a href="#collection-detail">수집·품질</a></nav>
+<section class="filter-panel" aria-labelledby="filter-title"><div class="section-head"><h2 id="filter-title">분석 조건</h2><span class="muted">조건을 맞춰 비교하세요</span></div><form id="filters"><div class="filter-grid">
+<label class="hq">본점 소재지<input id="hq" placeholder="경기도 남양주시 진접읍" autocomplete="off"></label>
+<label>시작일<input id="begin" type="date"></label><label>종료일<input id="end" type="date"></label>
+<label>계약방식<select id="contract"><option value="">전체 방식</option></select></label>
+<label>법인 상황<select id="profile"><option>기존 법인 면허 추가</option><option>신규 법인</option><option>본점 이전</option></select></label>
+<label>최소 추정가격 (원)<input id="min-price" type="number" min="0" placeholder="제한 없음"></label>
+<label>최대 추정가격 (원)<input id="max-price" type="number" min="0" placeholder="제한 없음"></label>
+<div class="filter-actions"><button class="primary" type="submit">조건 적용</button><button id="reset" type="button">초기화</button></div></div></form><p id="filter-status" class="muted" role="status"></p></section>
+<div class="callout"><strong>면허 4992 · 지역 기준 후보 분석</strong><p>적격심사·실적·시평액·복수면허 조건은 별도 확인이 필요합니다. <span id="profile-note">프로필별 전체 참가자격: UNKNOWN</span></p></div>
+<div id="metrics" class="metrics" aria-live="polite"></div>
+<section id="location"><div class="section-head"><div><p class="eyebrow">01 / LOCATION</p><h2>본점 소재지별 입지 비교</h2></div><button data-export="location">CSV 저장</button></div><p id="location-basis" class="basis"></p><p class="muted">최초 개찰단위의 참가업체수 중앙값입니다. 지역별 건수는 중복되므로 합산하지 마세요.</p>
+<div class="table-toolbar"><label>지역 검색<input id="region-search" type="search" placeholder="시·군·구 이름"></label><span id="location-count" class="muted"></span></div>
+<div id="location-table" class="table-wrap"></div><p class="hint">열 제목을 누르면 정렬됩니다. 지역을 누르면 근거 공고를 확인할 수 있습니다. 순위·점수는 제공하지 않습니다.</p><button class="more" data-more="location">더 보기</button></section>
+<section id="unitprice"><div class="section-head"><div><p class="eyebrow">02 / ANNUAL BUDGET</p><h2>지자체 단가계약</h2></div><button data-export="unitprice">CSV 저장</button></div><p class="muted">공고 1건의 예산과 지자체 1곳의 연간 합계를 나란히 비교합니다. 금액은 배정예산이며 실제 집행액·계약액이 아닙니다.</p><div id="unitprice-table" class="table-wrap"></div><p class="hint">수집 경계 연도는 부분 연도입니다. 연간 합계는 1건 이상 발주한 기관 중 예산 결측이 없는 기관만 포함합니다. 복수 면허·허용업종 때문에 코드 비율 합이 100%를 넘을 수 있습니다.</p><button class="more" data-more="unitprice">더 보기</button></section>
+<section id="shortlist"><div class="section-head"><div><p class="eyebrow">03 / OPEN NOTICES</p><h2>마감 전 공고</h2></div><button data-export="shortlist">CSV 저장</button></div><p id="shortlist-note" class="muted"></p><div class="table-toolbar"><label>공고 검색<input id="notice-search" type="search" placeholder="공고명 · 번호 · 기관"></label><label>후보 구분<select id="candidate"><option value="allowed">지역·면허 기준 참가 가능 후보</option><option value="unspecified">지역 제한 미기재 · 공고문 확인</option><option value="review">차수·필드 품질 확인 필요</option></select></label></div><p id="shortlist-count" class="muted" role="status"></p><div id="shortlist-table" class="table-wrap"></div><button class="more" data-more="shortlist">더 보기</button></section>
+<section id="collection-detail"><div class="section-head"><div><p class="eyebrow">04 / DATA QUALITY</p><h2>수집 현황과 품질</h2></div></div><p class="muted">API별 기준일이 달라 기간 밖에 등록된 상세 정보는 연결되지 않을 수 있습니다. DONE은 기간 페이지 수집 완료를 뜻합니다.</p><div id="progress-table" class="table-wrap"></div><div class="quality-grid"><div><h3>관련성 분포 · 공사 목록</h3><div id="relevance"></div><p class="hint">PENDING = 아직 판정 전, 해당 없음 아님<br>UNKNOWN = 면허 미수집·차수/필드 확인 필요</p></div><div><h3>원본 품질 표시</h3><div id="quality"></div><p class="hint">충돌은 이전 값을 보존합니다. 미수집·실패·미개찰을 0으로 바꾸지 않습니다.</p></div></div></section>
+<section class="reading"><h2>읽을 때 주의</h2><ul id="notes"></ul><p>근거 파일: location_notices.json · unitprice_notices.json · agency_samples.json<br>원공고 키와 source_response ID로 로컬 DB·마스킹된 원본까지 추적할 수 있습니다.</p></section>
+<footer>내부 검토용 · 외부 전송 없는 로컬 스냅샷 · 과거 주소/면허 및 전체 참가자격 확인 필요</footer></main>
+<dialog id="detail"><div class="section-head"><h2 id="detail-title">근거 공고</h2><button id="close-detail" aria-label="상세 닫기">닫기</button></div><div id="detail-content"></div></dialog>
+<noscript>이 화면의 필터·표에는 JavaScript가 필요합니다. 같은 폴더의 CSV·JSON 파일로 분석 결과를 확인할 수 있습니다.</noscript>
+<script type="application/json" id="dataset"><!-- DATA_JSON --></script><script>/* INLINE_JS */</script></body></html>

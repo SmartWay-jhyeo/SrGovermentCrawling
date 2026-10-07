@@ -1,0 +1,8 @@
+<!-- SYNTHETIC TEST FIXTURE: 실제 API 응답이 아님. 게이트웨이 인증 오류 형태를 흉내 낸 테스트 데이터 -->
+<OpenAPI_ServiceResponse>
+  <cmmMsgHeader>
+    <errMsg>SERVICE ERROR</errMsg>
+    <returnAuthMsg>SERVICE_KEY_IS_NOT_REGISTERED_ERROR</returnAuthMsg>
+    <returnReasonCode>30</returnReasonCode>
+  </cmmMsgHeader>
+</OpenAPI_ServiceResponse>

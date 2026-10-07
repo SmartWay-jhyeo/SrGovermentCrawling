@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bid-location-lab"
+version = "0.1.0"
+description = "면허 입지 분석기 - P0 API 계약·연결 검증 도구 (내부용)"
+readme = "README.md"
+# docs/CODEX_PROMPT.md 기준 Python 3.11. 실제 검증 버전은 README에 기록한다.
+requires-python = ">=3.11"
+dependencies = [
+    "httpx==0.28.1",
+    "PyYAML==6.0.3",
+    "defusedxml==0.7.1",
+    "python-dotenv==1.2.3",
+    "streamlit==1.64.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==9.1.1",
+]
+
+[project.scripts]
+bidloc = "bidloc.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+bidloc = ["report_assets/*.html", "report_assets/*.css", "report_assets/*.js", "ui/*.css"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "live: 실제 data.go.kr API 호출. --live, BIDLOC_RUN_LIVE_TESTS=1, ALLOW_LIVE_API=true, 인증키가 모두 필요하다.",
+]
+addopts = "-ra"

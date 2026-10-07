@@ -1,0 +1,13 @@
+# CODEX_PROMPT 수집 설정. P0에서는 오프라인 검증만 한다.
+# 기존 backfill.yaml 작업·저장 범위는 유지한다. 새 CLI 연결은 P2에서 검증한다.
+schema_version: 1
+years_back: 3
+target_license_codes: ["4992"]
+num_of_rows: 999
+window_days: 1
+max_attempts: 3
+max_restarts: 3
+stages: [LIST, LICENSE, REGION, OPENING]
+daily_limits:
+  bid_notice: 800
+  bid_award: 800
