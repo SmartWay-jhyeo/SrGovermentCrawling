@@ -32,7 +32,7 @@
 
 예시 경로는 `/volume1/docker/bid-location-lab`이다.
 
-- **코드:** SSH에서 `git clone https://github.com/SmartWay-jhyeo/bid-location-lab.git /volume1/docker/bid-location-lab`. 비공개 저장소라 GitHub 토큰(읽기 전용 권장)이 필요하다. 또는 PC의 코드 폴더를 `.venv`·`.local` 없이 복사한다.
+- **코드:** SSH에서 `git clone https://github.com/SmartWay-jhyeo/SrGovermentCrawling.git /volume1/docker/bid-location-lab`. 비공개 저장소라면 GitHub 토큰(읽기 전용 권장)이 필요하다. 또는 PC의 코드 폴더를 `.venv`·`.local` 없이 복사한다.
 - **데이터:** PC의 `.local\real` → NAS의 `/volume1/docker/bid-location-lab/.local/real`.
   ```powershell
   robocopy .local\real \\<NAS>\docker\bid-location-lab\.local\real /E /COPY:DAT /R:2 /W:5
