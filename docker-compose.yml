@@ -3,6 +3,8 @@
 #
 #   수집기만 실행:        sudo /usr/local/bin/docker compose up -d --build   (NAS의 sudo PATH에 docker가 없어 절대경로 필수)
 #   화면·API도 실행:      sudo /usr/local/bin/docker compose --profile web up -d --build   (.env에 BIDLOC_API_TOKEN 필요)
+#   화면을 외부에 공개:    sudo /usr/local/bin/docker compose --profile web --profile public up -d ui tunnel
+#                         (.env에 TUNNEL_TOKEN 필요. Cloudflare Access로 이메일 로그인 제한을 먼저 건다. docs/NAS_DEPLOY.md 4절)
 #
 # 같은 NAS의 시공노트를 보호하려고 모든 서비스에 메모리 상한과 낮은 CPU 가중치를 건다.
 # cpus:(하드 쿼터)는 Synology 커널에서 "NanoCPUs can not be set" 오류로 컨테이너가 시작되지 않는다(2026-10-09 실측).
@@ -61,3 +63,23 @@ services:
       - "8600:8600"
     mem_limit: 1536m
     cpu_shares: 256
+
+  # Cloudflare Tunnel — 화면(ui)을 https://bidloc.k-smartroad.com 으로 공개한다. 인바운드 포트 개방 없음.
+  # 공개 주소→ui:8501 매핑과 Access(이메일 로그인 제한)는 Cloudflare Zero Trust 대시보드에서 관리한다.
+  # 시공노트의 터널(lane-painting-cloudflared)과는 별개 터널이다. 이 컨테이너만 내리면 공개가 끊긴다.
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    profiles: ["public"]
+    command: ["tunnel", "--no-autoupdate", "run"]
+    environment:
+      TUNNEL_TOKEN: "${TUNNEL_TOKEN:?.env에 TUNNEL_TOKEN이 없다}"
+    depends_on:
+      - ui
+    restart: unless-stopped
+    mem_limit: 256m
+    cpu_shares: 256
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

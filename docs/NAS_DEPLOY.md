@@ -110,8 +110,23 @@ Container Manager 화면으로도 할 수 있다: 프로젝트 → 생성 → �
 3. 접속 주소:
    - 화면: `http://192.168.0.18:8501`
    - API: `http://192.168.0.18:8600/api/v1/recommendations?region=남양주&license=4992`, 헤더 `Authorization: Bearer <토큰>`
-4. **화면에는 로그인이 없다.** 공유기 포트포워딩이나 시공노트의 Cloudflare 터널에 붙여 외부로 열지 않는다. 외부 공개는 별도 결정 사항이다.
+4. **화면에는 로그인이 없다.** 공유기 포트포워딩으로 열지 않고, 시공노트의 터널에도 얹지 않는다. 외부에서 봐야 하면 아래 "외부 공개" 절차대로 전용 터널 + Cloudflare Access(이메일 로그인 제한)를 쓴다.
 5. 첫 화면은 나라장터 스냅샷을 만드느라 수 분 걸릴 수 있다(PC 기준 약 4분). 매일 추천 단계가 새벽에 캐시를 다시 만들어 두므로 아침에는 빠르다.
+
+## 4-1. 외부 공개 (Cloudflare Tunnel + Access)
+
+주소는 `https://bidloc.k-smartroad.com`. 시공노트 터널(`lane-painting-cloudflared`)과 별개의 터널을 쓴다. 공개를 끊을 때는 이 프로젝트의 `tunnel` 컨테이너만 내린다.
+
+1. Zero Trust 대시보드(one.dash.cloudflare.com) → Networks → Tunnels → Create a tunnel → Cloudflared → 이름 `bidloc`. Docker 탭의 `--token` 뒤 문자열을 `.env`의 `TUNNEL_TOKEN=`에 넣는다(채팅·Git 금지).
+2. 같은 터널의 Public Hostname: Subdomain `bidloc`, Domain `k-smartroad.com`, Service HTTP `ui:8501`.
+3. Access → Applications → Add → Self-hosted. 도메인 `bidloc.k-smartroad.com`, 정책 Allow + Include Emails(허용할 이메일). **이 단계를 빼면 누구나 들어온다.**
+4. NAS:
+   ```sh
+   cd /volume1/web_bidloc
+   sudo /usr/local/bin/docker compose --profile web --profile public up -d ui tunnel
+   sudo /usr/local/bin/docker compose --profile public logs --tail 20 tunnel   # "Registered tunnel connection" 4줄
+   ```
+5. 다른 네트워크(휴대폰 LTE 등)에서 주소를 열어 Cloudflare 로그인 화면 → 인증번호 → 화면이 뜨는지 본다.
 
 ## 5. 운영
 
@@ -120,6 +135,7 @@ Container Manager 화면으로도 할 수 있다: 프로젝트 → 생성 → �
 - **금지:** 0절의 금지 목록. 특히 `docker system df`·`prune`·`du`·`find /volume1`은 시공노트를 내린 전력이 있다.
 - **로그:** 컨테이너 로그는 10MB×3개로 제한한다. 일일 로그(`.local/real/reports/daily`)는 90일 보관한다.
 - **코드 업데이트:** `cd /volume1/web_bidloc && /usr/bin/git pull` → `sudo /usr/local/bin/docker compose build` → `sudo /usr/local/bin/docker compose up -d`. 데이터와 `.env`는 그대로 둔다.
+- **공개 중지:** `sudo /usr/local/bin/docker compose --profile public stop tunnel`. 화면은 내부망에서 계속 쓸 수 있다.
 - **중지:** `/volume1/web_bidloc`에서 `sudo /usr/local/bin/docker compose down`. 이 프로젝트 컨테이너만 내려가고 데이터는 유지된다. 시공노트 폴더에서는 절대 치지 않는다(cloudflared 터널이 끊긴다).
 - **백업:** `.local/real`을 Hyper Backup 대상에 넣는 것을 권한다. SQLite가 쓰는 중에 복사되지 않게 일일 수집이 끝난 뒤(새벽 수집 소요 시간 확인 후, 시공노트 백업 04:10 뒤 권장) 시각으로 잡는다.
 
