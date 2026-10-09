@@ -64,7 +64,7 @@ services:
     mem_limit: 1536m
     cpu_shares: 256
 
-  # Cloudflare Tunnel — 화면(ui)을 https://bidloc.k-smartroad.com 으로 공개한다. 인바운드 포트 개방 없음.
+  # Cloudflare Tunnel — 화면(ui)을 https://bidmap.k-smartroad.com 으로 공개한다. 인바운드 포트 개방 없음.
   # 공개 주소→ui:8501 매핑과 Access(이메일 로그인 제한)는 Cloudflare Zero Trust 대시보드에서 관리한다.
   # 시공노트의 터널(lane-painting-cloudflared)과는 별개 터널이다. 이 컨테이너만 내리면 공개가 끊긴다.
   tunnel:

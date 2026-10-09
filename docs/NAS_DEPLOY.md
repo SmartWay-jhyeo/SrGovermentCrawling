@@ -115,11 +115,11 @@ Container Manager 화면으로도 할 수 있다: 프로젝트 → 생성 → �
 
 ## 4-1. 외부 공개 (Cloudflare Tunnel + Access)
 
-주소는 `https://bidloc.k-smartroad.com`. 시공노트 터널(`lane-painting-cloudflared`)과 별개의 터널을 쓴다. 공개를 끊을 때는 이 프로젝트의 `tunnel` 컨테이너만 내린다.
+주소는 `https://bidmap.k-smartroad.com`. 시공노트 터널(`lane-painting-cloudflared`)과 별개의 터널을 쓴다. 공개를 끊을 때는 이 프로젝트의 `tunnel` 컨테이너만 내린다.
 
 1. Zero Trust 대시보드(one.dash.cloudflare.com) → Networks → Tunnels → Create a tunnel → Cloudflared → 이름 `bidloc`. Docker 탭의 `--token` 뒤 문자열을 `.env`의 `TUNNEL_TOKEN=`에 넣는다(채팅·Git 금지).
-2. 같은 터널의 Public Hostname: Subdomain `bidloc`, Domain `k-smartroad.com`, Service HTTP `ui:8501`.
-3. Access → Applications → Add → Self-hosted. 도메인 `bidloc.k-smartroad.com`, 정책 Allow + Include Emails(허용할 이메일). **이 단계를 빼면 누구나 들어온다.**
+2. 같은 터널의 Public Hostname: Subdomain `bidmap`, Domain `k-smartroad.com`, Service HTTP `ui:8501`.
+3. Access → Applications → Add → Self-hosted. 도메인 `bidmap.k-smartroad.com`, 정책 Allow + Include Emails(허용할 이메일). **이 단계를 빼면 누구나 들어온다.**
 4. NAS:
    ```sh
    cd /volume1/web_bidloc
@@ -127,6 +127,8 @@ Container Manager 화면으로도 할 수 있다: 프로젝트 → 생성 → �
    sudo /usr/local/bin/docker compose --profile public logs --tail 20 tunnel   # "Registered tunnel connection" 4줄
    ```
 5. 다른 네트워크(휴대폰 LTE 등)에서 주소를 열어 Cloudflare 로그인 화면 → 인증번호 → 화면이 뜨는지 본다.
+
+2026-10-09 실행 기록: 터널 `bidloc`(Healthy, icn 2연결), Access 앱 "면허 입지 분석기 (bidmap)" 정책 Allow·Emails(smartroad2025@gmail.com). 공개 주소를 열면 Cloudflare Access 로그인 화면이 먼저 뜨는 것까지 확인했다. 인증번호 입력 후 화면 로딩은 미검증.
 
 ## 5. 운영
 
