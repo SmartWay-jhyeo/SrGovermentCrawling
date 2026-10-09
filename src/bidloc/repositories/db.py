@@ -27,6 +27,9 @@ class MigrationFile:
     version: str
     path: Path
     sha256: str
+    # CRLF 그대로 해시한 값. Windows 체크아웃(CRLF)에서 적용한 DB를 리눅스(LF)에서 열 때
+    # 같은 내용을 '변경됨'으로 보지 않기 위해 둔다. 2026-10-09 NAS 이전 때 0004가 이걸로 막혔다.
+    legacy_sha256: str
 
 
 @dataclass(frozen=True)
@@ -71,8 +74,13 @@ def list_migration_files(migrations_dir: Path) -> list[MigrationFile]:
         match = _VERSION_RE.match(path.name)
         if not match:
             raise MigrationError(f"마이그레이션 파일 이름 형식 오류: {path.name}")
-        data = path.read_bytes()
-        files.append(MigrationFile(version=path.stem, path=path, sha256=hashlib.sha256(data).hexdigest()))
+        # 줄 끝(CRLF/LF)은 내용이 아니다. 체크섬은 LF로 정규화한 바이트로 만든다.
+        normalized = path.read_bytes().replace(b"\r\n", b"\n")
+        files.append(MigrationFile(
+            version=path.stem, path=path,
+            sha256=hashlib.sha256(normalized).hexdigest(),
+            legacy_sha256=hashlib.sha256(normalized.replace(b"\n", b"\r\n")).hexdigest(),
+        ))
     versions = [f.version[:4] for f in files]
     if len(versions) != len(set(versions)):
         raise MigrationError("같은 번호의 마이그레이션이 두 개 이상 있다")
@@ -98,7 +106,7 @@ def migration_status(conn: sqlite3.Connection, migrations_dir: Path) -> Migratio
             if exists else {})
     applied = sorted(v for v in rows if v in files)
     pending = sorted(v for v in files if v not in rows)
-    mismatch = sorted(v for v in rows if v in files and files[v].sha256 != rows[v])
+    mismatch = sorted(v for v in rows if v in files and rows[v] not in (files[v].sha256, files[v].legacy_sha256))
     unknown = sorted(v for v in rows if v not in files)
     return MigrationStatus(applied=applied, pending=pending, checksum_mismatch=mismatch, unknown_applied=unknown)
 
@@ -112,6 +120,11 @@ def apply_migrations(conn: sqlite3.Connection, migrations_dir: Path) -> list[str
     _ensure_migrations_table(conn)
     applied_now: list[str] = []
     files = {f.version: f for f in list_migration_files(migrations_dir)}
+    # CRLF 파일로 적용됐던 기록은 정규화 체크섬으로 바꿔 둔다(내용 동일, 한 번만 일어난다).
+    for version in status.applied:
+        mfile = files[version]
+        conn.execute("UPDATE schema_migrations SET checksum_sha256 = ? WHERE version = ? AND checksum_sha256 = ?",
+                     (mfile.sha256, version, mfile.legacy_sha256))
     for version in status.pending:
         mfile = files[version]
         sql = mfile.path.read_text(encoding="utf-8")

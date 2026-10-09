@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import shutil
 import sqlite3
 from datetime import datetime, timezone
@@ -46,6 +47,28 @@ def test_checksum_mismatch_detected(tmp_path: Path):
     assert migration_status(conn, mig).checksum_mismatch == ["0001_p0_core"]
     with pytest.raises(MigrationError):
         apply_migrations(conn, mig)
+    conn.close()
+
+
+def test_crlf_applied_migration_is_not_a_mismatch_and_heals(tmp_path: Path):
+    """Windows(CRLF)에서 적용한 DB를 리눅스(LF) 체크아웃으로 열어도 같은 내용이면 막지 않는다."""
+    mig = tmp_path / "migrations"
+    shutil.copytree(REPO_ROOT / "migrations", mig)
+    target = mig / "0001_p0_core.sql"
+    lf_bytes = target.read_bytes().replace(b"\r\n", b"\n")
+    target.write_bytes(lf_bytes.replace(b"\n", b"\r\n"))          # CRLF 상태로 적용
+    conn = connect(tmp_path / "crlf.sqlite3")
+    apply_migrations(conn, mig)
+    conn.execute("UPDATE schema_migrations SET checksum_sha256 = ? WHERE version = '0001_p0_core'",
+                 (hashlib.sha256(target.read_bytes()).hexdigest(),))  # 예전 방식(원본 바이트 해시) 기록을 재현
+    target.write_bytes(lf_bytes)                                    # LF 체크아웃으로 전환
+    assert migration_status(conn, mig).checksum_mismatch == []
+    apply_migrations(conn, mig)
+    stored = conn.execute("SELECT checksum_sha256 FROM schema_migrations WHERE version = '0001_p0_core'").fetchone()[0]
+    assert stored == hashlib.sha256(lf_bytes).hexdigest()
+    # 실제 내용이 바뀐 경우는 여전히 막는다.
+    target.write_bytes(lf_bytes + b"\n-- tampered\n")
+    assert migration_status(conn, mig).checksum_mismatch == ["0001_p0_core"]
     conn.close()
 
 
