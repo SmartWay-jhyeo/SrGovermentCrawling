@@ -4,7 +4,8 @@
 #   수집기만 실행:        sudo /usr/local/bin/docker compose up -d --build   (NAS의 sudo PATH에 docker가 없어 절대경로 필수)
 #   화면·API도 실행:      sudo /usr/local/bin/docker compose --profile web up -d --build   (.env에 BIDLOC_API_TOKEN 필요)
 #
-# 같은 NAS의 시공노트를 보호하려고 모든 서비스에 메모리·CPU 상한을 건다.
+# 같은 NAS의 시공노트를 보호하려고 모든 서비스에 메모리 상한과 낮은 CPU 가중치를 건다.
+# cpus:(하드 쿼터)는 Synology 커널에서 "NanoCPUs can not be set" 오류로 컨테이너가 시작되지 않는다(2026-10-09 실측).
 name: bid-location-lab
 
 x-common: &common
@@ -31,7 +32,7 @@ services:
       DAILY_RUN_AT: "00:12"
       DAILY_RUN_ON_START: "${DAILY_RUN_ON_START:-0}"
     mem_limit: 3g
-    cpus: 2.0
+    cpu_shares: 512   # Synology 커널은 cpus:(CFS 쿼터)를 지원하지 않아 상대 가중치만 쓴다. 기본값 1024보다 낮게 둔다
 
   ui:
     <<: *common
@@ -44,7 +45,7 @@ services:
     ports:
       - "8501:8501"
     mem_limit: 2g
-    cpus: 1.0
+    cpu_shares: 256
 
   api:
     <<: *common
@@ -59,4 +60,4 @@ services:
     ports:
       - "8600:8600"
     mem_limit: 1536m
-    cpus: 1.0
+    cpu_shares: 256

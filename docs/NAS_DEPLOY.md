@@ -14,6 +14,8 @@
 | 볼륨 | `/volume1`만 있음(RAID1 8TB, **암호화 볼륨** cryptvol_1). NVMe `/volume2`는 없음 | 2026-09 기준 사용 7% |
 | 시공노트 위치 | `/volume1/web_markview` (compose 스택 5개: postgres·mosquitto·backend·frontend·cloudflared) | **이 폴더에서 compose 명령을 치지 않는다** |
 | DSM이 잡은 포트 | 80, 443, 5432, 5000, 5001 | 이 프로젝트의 8501·8600과는 충돌 없음(미확인: 실제 기동 때 확인) |
+| compose 제한 | `cpus:`(CFS 쿼터) 불가, `cpu_shares`·`mem_limit`만 동작 | `cpus:`가 있으면 "NanoCPUs can not be set"으로 컨테이너가 안 뜬다(2026-10-09 실측) |
+| unzip | 없음 | 컨테이너의 python `zipfile`로 푼다 |
 | scp | `scp -O` 필요 | 최신 OpenSSH의 SFTP 모드가 DSM sshd와 안 맞아 `Connection closed` |
 | 백업 | 시공노트 DB 백업이 매일 04:10 실행(`/volume1/backup/markview/...`) | 이 프로젝트 일일 수집 00:12와 겹치지 않음 |
 
