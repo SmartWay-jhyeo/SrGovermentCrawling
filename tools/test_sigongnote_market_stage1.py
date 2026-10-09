@@ -8,6 +8,9 @@ spec=importlib.util.spec_from_file_location('market',Path(__file__).with_name('s
 m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
 
 class Rules(unittest.TestCase):
+    def test_missing_auxiliary_main_does_not_drop_notice(self):
+        self.assertEqual(m.classify('시설 점검공사',None)['classification_status'],m.EXCLUDE)
+        self.assertTrue(m.classify('공원 보수공사',None)['thematic_candidate'])
     def test_public_corporation_not_local_government(self):
         self.assertNotEqual(m.organization('한국도로공사 수도권본부')[0],'수도권 지자체 수요기관 후보')
         self.assertNotEqual(m.organization('경기도 경기주택도시공사')[0],'수도권 지자체 수요기관 후보')
@@ -29,9 +32,15 @@ class Rules(unittest.TestCase):
         self.assertEqual(p['primary_class'],'확장후보: 도로·보도 일반보수')
     def test_new_park_excluded(self):
         self.assertEqual(m.classify('도시공원 조성공사')['classification_status'],m.EXCLUDE)
+    def test_explicit_road_construction_is_not_maintenance(self):
+        self.assertEqual(m.classify('도로건설공사')['classification_status'],m.EXCLUDE)
+        self.assertEqual(m.classify('도로건설 및 기존 보도 보수공사')['work_type'],'혼합')
     def test_mixed_construction_review(self):
         self.assertEqual(m.classify('공원 시설보수 및 신규 설치공사')['work_type'],'혼합')
         self.assertEqual(m.classify('공원 시설보수 및 신규 설치공사')['classification_status'],m.REVIEW)
+    def test_annual_installation_not_silently_excluded(self):
+        p=m.classify('교통안전시설 설치공사(연간단가)')
+        self.assertEqual(p['classification_status'],m.REVIEW);self.assertEqual(p['work_type'],'미확인')
     def test_multiple_facilities_one_primary(self):
         p=m.classify('차선도색 및 교통신호기 정비공사')
         self.assertTrue(p['primary_class'].startswith('혼합'));self.assertGreaterEqual(len(p['facility_tags']),2)
@@ -59,6 +68,9 @@ class History(unittest.TestCase):
         self.assertEqual(r['kind'],'등록공고');self.assertEqual(r['cancel_history'],1)
     def test_ord_date_conflict_unknown(self):
         self.add('A','000','2024-01-02 00:00:00');self.add('A','001','2024-01-01 00:00:00')
+        m.build_nodes(self.c);self.assertEqual(self.c.execute('SELECT selection FROM nodes').fetchone()[0],'대표 선정 미확인')
+    def test_revision_crossyear_not_silently_shifted(self):
+        self.add('A','000','2024-12-31 00:00:00');self.add('A','001','2025-01-01 00:00:00')
         m.build_nodes(self.c);self.assertEqual(self.c.execute('SELECT selection FROM nodes').fetchone()[0],'대표 선정 미확인')
     def test_explicit_same_year_chain(self):
         self.add('A','000','2024-01-01 00:00:00');self.add('B','000','2024-01-02 00:00:00',prev='A-000')

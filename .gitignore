@@ -46,3 +46,9 @@ dist/
 
 # 시공노트 실데이터 검토용 추출본
 /outputs/sigongnote_market_stage1/
+/outputs/sigongnote_market_stage2/
+/outputs/sigongnote_market_stage2_documents/
+/docs/시공노트_2차검토_우선확인공고.csv
+/outputs/sigongnote_market_stage2_verified/
+/outputs/sigongnote_market_nationwide/
+/outputs/(공고문)2025년 교통노면표시 유지보수 연간단가공사(관리도로 북부권).hwp

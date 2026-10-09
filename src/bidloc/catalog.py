@@ -17,9 +17,9 @@ import yaml
 
 ALLOWED_STATUSES = frozenset({"DOCUMENTED", "LIVE_VERIFIED", "UNVERIFIED", "BLOCKED"})
 ALLOWED_HOSTS = frozenset({"apis.data.go.kr"})
-_OP_NAME = re.compile(r"^get[A-Za-z0-9]+$")
+_OP_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9]*$")
 _SERVICE_ID = re.compile(r"^[a-z][a-z0-9_]*$")
-_PARAM_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9]*$")
+_PARAM_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 class CatalogError(ValueError):

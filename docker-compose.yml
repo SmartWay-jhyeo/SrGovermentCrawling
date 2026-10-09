@@ -1,0 +1,62 @@
+# 면허 입지 분석기 — Synology Container Manager(Docker 24) 배포.
+# 이 폴더(git clone) 안에 PC에서 복사한 .local/ 와 .env 를 둔다. 둘 다 Git 제외이며 이미지에도 들어가지 않는다.
+#
+#   수집기만 실행:        sudo docker compose up -d --build
+#   화면·API도 실행:      sudo docker compose --profile web up -d --build   (.env에 BIDLOC_API_TOKEN 필요)
+#
+# 같은 NAS의 시공노트를 보호하려고 모든 서비스에 메모리·CPU 상한을 건다.
+name: bid-location-lab
+
+x-common: &common
+  build: .
+  image: bid-location-lab:latest
+  working_dir: /app
+  volumes:
+    - ./.local:/app/.local
+    - ./.env:/app/.env:ro
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  collector:
+    <<: *common
+    command: ["bash", "deploy/daily-loop.sh"]
+    environment:
+      TZ: Asia/Seoul
+      PYTHONIOENCODING: utf-8
+      DAILY_RUN_AT: "00:12"
+      DAILY_RUN_ON_START: "${DAILY_RUN_ON_START:-0}"
+    mem_limit: 3g
+    cpus: 2.0
+
+  ui:
+    <<: *common
+    profiles: ["web"]
+    command: ["python", "-m", "streamlit", "run", "app.py", "--server.address=0.0.0.0", "--server.port=8501"]
+    environment:
+      TZ: Asia/Seoul
+      PYTHONIOENCODING: utf-8
+    # 화면에는 로그인 기능이 없다. 이 포트는 NAS의 내부망에서만 쓰고 외부(공유기·터널)로 열지 않는다.
+    ports:
+      - "8501:8501"
+    mem_limit: 2g
+    cpus: 1.0
+
+  api:
+    <<: *common
+    profiles: ["web"]
+    command: ["python", "-m", "bidloc.api", "--host", "0.0.0.0", "--port", "8600"]
+    environment:
+      TZ: Asia/Seoul
+      PYTHONIOENCODING: utf-8
+      # 0.0.0.0으로 열기 때문에 .env에 토큰이 없으면 API 프로그램이 시작을 거부한다(bidloc.api).
+      # 요청은 Authorization: Bearer <토큰>. 수집기만 켤 때는 이 값이 없어도 된다.
+      BIDLOC_API_TOKEN: "${BIDLOC_API_TOKEN:-}"
+    ports:
+      - "8600:8600"
+    mem_limit: 1536m
+    cpus: 1.0

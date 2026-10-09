@@ -1,7 +1,7 @@
 """환경설정 로딩과 검증.
 
 우선순위: 프로세스 환경변수(비어 있지 않은 값) > 프로젝트 .env > 기본값.
-인증키는 DATA_GO_KR_SERVICE_KEY에서만 읽고 SecretValue로 감싼다.
+나라장터와 추가 제공자 인증키를 분리하고 SecretValue로 감싼다.
 """
 
 from __future__ import annotations
@@ -17,9 +17,11 @@ from dotenv import dotenv_values
 from bidloc.redaction import REGISTRY, SecretValue
 
 KEY_ENV = "DATA_GO_KR_SERVICE_KEY"
+PROVIDER_KEY_ENV = "PROVIDER_DATA_GO_KR_SERVICE_KEY"
 
 DEFAULTS: dict[str, str] = {
     "DATA_GO_KR_SERVICE_KEY_FORMAT": "decoded",
+    "PROVIDER_DATA_GO_KR_SERVICE_KEY_FORMAT": "decoded",
     "ALLOW_LIVE_API": "false",
     "LIVE_MAX_CALLS_PER_RUN": "100",
     "LIVE_MAX_CALLS_PER_DAY": "100",
@@ -39,7 +41,7 @@ DEFAULTS: dict[str, str] = {
     "APP_PORT": "8501",
 }
 
-KNOWN_KEYS = frozenset({KEY_ENV, *DEFAULTS.keys()})
+KNOWN_KEYS = frozenset({KEY_ENV, PROVIDER_KEY_ENV, *DEFAULTS.keys()})
 _ENCODED_KEY_RE = re.compile(r"^[A-Za-z0-9._~%-]+$")
 _PERCENT_RE = re.compile(r"%[0-9A-Fa-f]{2}")
 _LOOPBACK = {"127.0.0.1", "localhost", "::1"}
@@ -76,6 +78,8 @@ class Settings:
     value_sources: dict[str, str] = field(default_factory=dict)
     warnings: tuple[str, ...] = ()
     unknown_env_file_keys: tuple[str, ...] = ()
+    provider_service_key: SecretValue | None = None
+    provider_service_key_format: str = "decoded"
 
     @property
     def service_key_present(self) -> bool:
@@ -86,6 +90,7 @@ class Settings:
         src = self.value_sources
         return [
             (KEY_ENV, "설정됨" if self.service_key else "미설정", src.get(KEY_ENV, "-")),
+            (PROVIDER_KEY_ENV, "설정됨" if self.provider_service_key else "미설정", src.get(PROVIDER_KEY_ENV, "-")),
             ("DATA_GO_KR_SERVICE_KEY_FORMAT", self.service_key_format, src.get("DATA_GO_KR_SERVICE_KEY_FORMAT", "default")),
             ("ALLOW_LIVE_API", str(self.allow_live_api).lower(), src.get("ALLOW_LIVE_API", "default")),
             ("LIVE_MAX_CALLS_PER_RUN", str(self.live_max_calls_per_run), src.get("LIVE_MAX_CALLS_PER_RUN", "default")),
@@ -194,6 +199,22 @@ def load_settings(
         if register_secret:
             REGISTRY.register(service_key)
 
+    provider_format = get("PROVIDER_DATA_GO_KR_SERVICE_KEY_FORMAT").strip().lower()
+    if provider_format not in {"decoded", "encoded"}:
+        raise ConfigError("PROVIDER_DATA_GO_KR_SERVICE_KEY_FORMAT은 decoded 또는 encoded여야 한다")
+    provider_raw = get(PROVIDER_KEY_ENV).strip()
+    provider_key = None
+    if provider_raw:
+        if any(ch.isspace() for ch in provider_raw):
+            raise ConfigError(f"{PROVIDER_KEY_ENV}에 공백 문자가 포함되어 있다 (값은 표시하지 않음)")
+        if provider_format == "encoded" and not _ENCODED_KEY_RE.match(provider_raw):
+            raise ConfigError("추가 제공자의 encoded 키 형식이 잘못되었다 (값은 표시하지 않음)")
+        if provider_format == "decoded" and _PERCENT_RE.search(provider_raw):
+            warnings.append("추가 제공자 키에 %XX가 있다. Encoding 키라면 PROVIDER_DATA_GO_KR_SERVICE_KEY_FORMAT=encoded로 설정한다.")
+        provider_key = SecretValue(provider_raw)
+        if register_secret:
+            REGISTRY.register(provider_key)
+
     allow_live = _parse_bool("ALLOW_LIVE_API", get("ALLOW_LIVE_API"))
     max_run = _parse_int("LIVE_MAX_CALLS_PER_RUN", get("LIVE_MAX_CALLS_PER_RUN"), minimum=0, maximum=100_000)
     max_day = _parse_int("LIVE_MAX_CALLS_PER_DAY", get("LIVE_MAX_CALLS_PER_DAY"), minimum=0, maximum=1_000_000)
@@ -269,4 +290,6 @@ def load_settings(
         value_sources=dict(sources),
         warnings=tuple(warnings),
         unknown_env_file_keys=unknown,
+        provider_service_key=provider_key,
+        provider_service_key_format=provider_format,
     )

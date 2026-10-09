@@ -1,5 +1,55 @@
 # 단계별 검증 보고서
 
+## 2026-10-08 11:00 KST — 추가 세 서비스 실제 수집
+
+- 상세: [PROVIDER_API_VALIDATION.md](PROVIDER_API_VALIDATION.md)의 최신 실제 수집 성공 절. 사용자 입력 키의 인코딩 형식을 encoded로 수정, LH EUC-KR XML / body.item 지원, 페이지 수집 및 별도 staging 체크포인트 구현.
+- 실호출: 초기 403/30 3회, 수정 후 표본 5회, 범위 수집 15회 = 23회. 세 API 조회 범위 totalCount와 수신 행수 일치. API 전수범위·독립 공사 건수로 확대 해석하지 않는다.
+- `.venv/Scripts/python -m pytest tests/unit/test_provider_collect.py tests/unit/test_provider_probe.py -q` → 20 passed (2.80초).
+- `.venv/Scripts/python -m pytest -q` → 258 passed / 2 skipped (48.76초). 실연동 pytest는 CLI --live 미지정으로 SKIPPED; 별도 CLI 실호출과 구분한다.
+- 범위 수집은 저장 완료 후 실행 상태 기록 시 stop_reason 누락 TypeError 발생. 필수 인자를 추가하고 CLI 전체 종료 회귀 테스트를 추가했다. `.venv/Scripts/python -m pytest tests/unit/test_provider_collect.py -q` → 6 passed (1.33초).
+- 같은 수집 명령 재실행 HTTP 0회, 완료 범위 재사용, 저장 행 증가 없음. 최초 실행 기록은 원래 보고서·저장 job 완료 상태 대조 후 복구했다.
+- 원본·보고서·staging·수정 소스 32파일과 DB 메타데이터 23행에서 현재 두 키 변형 검출 0 / 미검사 0. staging integrity_check=ok. 세 소스 날짜 필드 파싱 실패 0 / 10월 1~8일 밖 행 0.
+- 현장주소·참가지역·면허 조건·버전 관계·UI/스케줄러 연결은 미검증 또는 미구현. K-apt 제목 후보는 탐색 분류이며 면허/공종 전수 수집 판정이 아니다.
+
+## 2026-10-08 — 추가 서비스 공통 키 분리 검증
+
+- 사용자 확인: K-apt·LH·K-water는 서로 같은 승인 키를 사용하지만 기존 나라장터 키와는 다르다. 앞선 403/30은 기존 키에 대한 응답이다.
+- 구현: 별도 `PROVIDER_DATA_GO_KR_SERVICE_KEY` 및 형식 설정, 양쪽 키 마스킹, 제공자별 Settings/클라이언트 선택. 기존 나라장터 키·수집 경로 보존. 새 키 미설정 시 기존 키로 fallback하지 않는다. 누락된 로컬 `.env` 입력란만 추가했다.
+- `.venv/Scripts/python -m pytest tests/unit/test_provider_probe.py tests/unit/test_config.py -q` → 40 passed (5.72초).
+- `.venv/Scripts/python -m pytest -q` → 253 passed / 2 skipped (47.25초). 실연동 테스트는 CLI --live 미지정으로 SKIPPED.
+- `.venv/Scripts/python -m bidloc.provider_probe --live --max-calls 6` → 추가 키 미입력으로 세 서비스 모두 호출 전 BLOCKED, HTTP 0회.
+- `git diff --check` → 오류 없음, 일부 파일 CRLF 전환 경고. 실제 새 키·응답·공고 수집은 사용자 로컬 입력 전 BLOCKED. 정식 수집 성공으로 표시하지 않는다.
+
+## 2026-10-08 10:46 KST — 사용자 활용승인 확인 후 호출
+
+- 사용자 확인: K-apt·LH·K-water 승인 완료, 세 서비스의 키가 서로 같음. 기존 로컬 나라장터 키와의 일치 여부는 아직 확인하지 않았다.
+- 실행: `.venv/Scripts/python -m bidloc.provider_probe --live --providers kapt,lh,kwater --begin 2026-10-01 --end 2026-10-08 --max-calls 6`.
+- 결과: 각 1회, 총 3회 모두 HTTP 403 / code 30 / AUTH_KEY_INVALID. source_response ID 9875~9877. 데이터 미수집.
+- 근거: Git 제외 `.local/real/reports/provider-probe/provider-probe-20261008T104622-c2bc149f.json`.
+- 로컬 설정 확인: 유효 키 출처 `.env`, 키 형식 decoded, 프로세스 환경변수 덮어쓰기 없음, 설정 경고 없음. 실제 키 값은 출력하지 않았다.
+- 수집 코드 변경 없음. 공고 파싱·정규화 검증 BLOCKED. 승인 반영 지연이나 키 불일치를 확정 원인으로 단정하지 않는다.
+- 검증: `.venv/Scripts/python -m pytest tests/unit/test_provider_probe.py -q` → 8 passed (0.62초). 이번 보고서·원본 4개 파일과 DB 메타데이터 3행의 시크릿 검사 미검사 0 / 검출 0. 문서 `git diff --check` 오류 없음(CRLF 전환 경고만 관측).
+
+## 2026-10-08 10:34 KST — 추가 조달 API 수집 재시도
+
+- 실행: `.venv/Scripts/python -m bidloc.provider_probe --live --providers kapt,lh,kwater --begin 2026-10-01 --end 2026-10-08 --max-calls 6`.
+- 관측: 세 서비스 각 1회, 총 3회. 모두 HTTP 403 / code 30 / AUTH_KEY_INVALID. 종료코드 1. 원본 source_response ID 9872~9874. 공고 데이터 미수집, 정식 수집 BLOCKED.
+- 보고서: Git 제외 `.local/real/reports/provider-probe/provider-probe-20261008T103447-3a78810c.json`. 최상위 PARTIAL을 성공으로 해석하지 않으며 각 제공자 상태는 BLOCKED다.
+- 오프라인 검증: `.venv/Scripts/python -m pytest tests/unit/test_provider_probe.py -q` → 8 passed (0.31초). 코드 변경 없음. 전체 테스트 재실행 SKIPPED; 새 데이터의 페이지·현장주소·공종·정정 검증은 인증 오류로 BLOCKED.
+
+## 2026-10-08 — 추가 조달 API probe
+
+상세 계약·공식 출처·재실행 명령: [PROVIDER_API_VALIDATION.md](PROVIDER_API_VALIDATION.md).
+
+- `python -m bidloc.provider_probe` → --live 없는 실행 BLOCKED, HTTP 0회.
+- `python -m bidloc.provider_probe --live --begin 2026-10-01 --end 2026-10-08 --max-calls 6` → K-apt·LH·K-water 각 1회 HTTP 403 / code 30. 총 3회, PARTIAL, 종료코드 1.
+- `python -m bidloc.provider_probe --live --providers bid_notice --begin 2026-10-07 --end 2026-10-07 --max-calls 2` → 나라장터 2페이지 HTTP 200 / code 00, 최근 구간 공고 표본 확인. 총 2회. 표본만 확인했으므로 전체 보고 상태 PARTIAL.
+- `.venv/Scripts/python -m pytest tests/unit/test_provider_probe.py -q` → 합성 응답 8 passed (0.28초). 인증/쿼터 중단, 오류→0 변환 방지, 반복페이지, 오래된 응답의 최신성 미확정, 월 경계 거부, 허용된 operation/parameter 검증.
+- `.venv/Scripts/python -m pytest -q` → 246 passed / 2 skipped (40.77초). 기존 실연동 테스트 2개는 명시적 --live 미지정으로 SKIPPED; 위 5회 probe와 별도다.
+- 최종 도구 메시지 수정 후 해당 단위테스트 재실행 8 passed (0.19초). 변경 소스·공개 명세·로컬 보고서·실응답 원본 합계 26개 파일과 DB 요청 메타데이터 5행에서 현재 키·인코딩 변형 검출 0건. `.local/`·`.env` Git 제외 확인. 이번 변경 파일 `git diff --check` 오류 없음.
+
+문서 가져오기 중 중부발전 페이지의 내장 Swagger는 JSONDecodeError로 파싱 실패하여 자동 호출 대상으로 추가하지 않았다. 초기 메타데이터 추출의 K-apt operation 검색도 StopIteration으로 중단되어 경로별 Swagger parameters로 수정했다. 이 과정에는 인증키를 사용하는 API 호출이 없었다.
+
 ## 2026-10-08 — 목업 채택 후 실행형 Streamlit 앱 검증
 
 - 환경: Windows / Python 3.11.9 / SQLite 3.45.1 / Streamlit 1.64.0 / pandas 3.0.6. `pip check`: No broken requirements found. 의존성은 `requirements-lock.txt`에 고정했다.

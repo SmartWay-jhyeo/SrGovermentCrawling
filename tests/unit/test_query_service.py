@@ -84,6 +84,9 @@ def test_native_app_search_detail_api_and_rerun_without_collection(monkeypatch,t
     monkeypatch.setattr(ui,'load_settings',lambda:SimpleNamespace(database_path=tmp_path/'synthetic.sqlite3',data_mode='synthetic'))
     monkeypatch.setattr(ui,'cached_snapshot',lambda *args:(rows,meta))
     at=AppTest.from_file(str(Path(__file__).resolve().parents[2]/'app.py'),default_timeout=30).run()
+    # The app opens on the condition dashboard; without a saved profile it asks for one.
+    assert not at.exception and at.title[0].value=='조건 검색'
+    at.button(key='nav_공고 검색').click().run()
     assert not at.exception
     assert '2건' in at.subheader[0].value
     at.text_input(key='q').set_value('방수')

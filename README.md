@@ -1,5 +1,21 @@
 # 면허 입지 분석기
 
+추가 조달 API 수집(2026-10-08): K-apt·LH·K-water 세 곳 모두 새 공통 키로 실제 응답과 조회 범위 내 페이지 수집을 확인했다. 나라장터는 기존 `DATA_GO_KR_SERVICE_KEY`, 추가 세 곳은 `PROVIDER_DATA_GO_KR_SERVICE_KEY`를 사용한다. 키가 Encoding 값이면 `PROVIDER_DATA_GO_KR_SERVICE_KEY_FORMAT=encoded`, Decoding 값이면 `decoded`로 설정한다. 키는 채팅·Git에 올리지 않는다. [검증 결과와 범위](docs/PROVIDER_API_VALIDATION.md)를 참조한다. 한전은 별도 인증·어댑터 준비 전이다.
+
+추가 소스 수집 명령: `.venv/Scripts/python -m bidloc.provider_collect --live --begin 2026-10-01 --end 2026-10-08 --rows 100 --max-calls 16` (`ALLOW_LIVE_API=true`도 필요). 원본은 기존 raw 저장소, 응답 항목과 페이지 체크포인트는 `.local/real/providers/notices.sqlite3`에 저장한다. 같은 조건 재실행은 이어받기이며 완료된 범위는 다시 호출하지 않는다. 다른 날짜 범위는 별도 스냅샷으로 저장하므로 범위 간 행을 단순 합산하지 않는다. 기본 추가 서비스 일예산 20회와 실행 예산을 함께 지킨다. K-water는 월 단위 조회여서 월을 넘는 범위는 거부한다.
+
+매일 자동수집(2026-10-08 연결, 10-09 순서 조정): 예약 작업 `bidloc-backfill-daily`(매일 00:12)의 실행 순서는 다음과 같다.
+1. 나라장터 범위 확장
+2. `.venv/Scripts/python -m bidloc.provider_collect --live --daily --max-calls 40`
+3. 나라장터 스윕 → 확정
+4. `.venv/Scripts/python -m bidloc.recommend --daily`(저장한 조건으로 오늘의 추천 목록 기록, 네트워크 없음)
+
+추가 수집처를 긴 나라장터 스윕보다 먼저 받는 이유는, 스윕이 중간에 끊겨도(2026-10-09 00:12 사례) 추가 수집처는 받기 위해서다. 대상은 K-apt·LH·K-water·국방조달(D2B)이다. 최근 3일(K-water는 이번 달, 월초에는 지난달도)을 그날 날짜의 스냅샷으로 다시 읽는다. D2B는 공사 공고만 상세(위치·지역제한·면허제한)까지 받는다(`--max-details`, 기본 10건). 같은 날 다시 실행하면 이어받기다. 예약 스크립트는 Git 제외 `.local/scheduled/backfill_daily.ps1`이며, 수정 전 원본은 같은 폴더의 `backfill_daily.before-provider-20261008.ps1`이다. 외부 HTTP API는 아직 미연결이다.
+
+출처 검증 probe(2026-10-08): `.venv/Scripts/python -m bidloc.provider_probe --live --providers <id> --begin YYYY-MM-DD --end YYYY-MM-DD --rows N --max-calls 2`. `bid_notice_reg`·`bid_notice_etc`는 나라장터 응답의 등록유형(연계 공고 여부)을 확인할 때 쓴다. `d2b`와 `pps_openstd`는 추가 서비스 키(`PROVIDER_DATA_GO_KR_SERVICE_KEY`)를 쓰며, 2026-10-08 활용신청 후 실응답을 확인했다. `--detail`은 d2b 목록 1페이지에서 공사 1건의 상세를 1회 더 호출한다. `--rows`는 1~999이고 provider마다 최대 2페이지를 조회한다. 기본 대상은 `kapt,lh,kwater` 그대로다. [검증 결과](docs/CLAUDE_REMAINING_PROVIDERS_FINDINGS.md).
+
+**NAS 배포(2026-10-09 준비):** `Dockerfile`, `docker-compose.yml`, `deploy/daily.sh`(리눅스용 일일 수집), [배포 안내](docs/NAS_DEPLOY.md). 수집기는 메모리 3GB·CPU 2개 상한과 디스크 유휴 우선순위로 매일 00:12에 돈다. 화면·API는 `--profile web`으로 선택 실행한다.
+
 ## 실행형 앱 — 2026-10-08
 
 사용자가 선택한 [목업](docs/ui/README.md)을 기준으로 만든 **Streamlit 앱**이다. 저장된 SQLite 실데이터에서 공고 검색·조건 필터·공고 상세·CSV/JSON 다운로드·지역 비교·단가 분석·검토 대기·수집 품질 화면을 제공한다. 아래의 P4 HTML은 이전 파일 기반 보고서이며 현재 앱 실행 방식과 다르다.
@@ -17,9 +33,39 @@ py -3.11 -m venv .venv
 
 앱은 `.env`의 `DATABASE_PATH`를 읽는다. 기본값은 `.local/real/bidloc.sqlite3`이며, 저장 데이터가 없으면 **미수집**을 표시한다. 초기 화면의 기간은 저장된 작업 종료 연도의 1월 1일부터 작업 종료일까지다. 범위를 바꾸고 **검색**을 눌러 적용한다. 현재 검색은 **4992 관련 공고와 단가 분석 후보**를 대상으로 하며 나라장터 전체 공고 검색이라고 주장하지 않는다. 회사 프로필과 본점은 분석 가정이며 실제 자격 확정이 아니다.
 
+**조건 검색(대시보드, 첫 화면).** 회사 조건(본점 소재지·면허 4992·현장 범위·출처)을 저장하면 그 조건의 마감 전 추천 공고를 보여준다.
+- 요약 수치는 조건 일치 / 확인 필요 / 새 추천 / 마감 임박(3일)이다.
+- 목록은 새 추천 / 마감 임박 / 전체 추천 탭으로 나뉘고, 공고 상세를 볼 수 있다.
+- 조건은 `.local/real/recommend/profile.json`, 날마다의 추천 목록은 `.local/real/recommend/daily/YYYY-MM-DD.json`에 남는다(Git 제외).
+- "새 추천"은 같은 조건의 전날 목록에 없던 공고다. 전날 목록이 없으면 최근 공고일(어제 이후)로 대신하고, 화면에 기준을 표시한다.
+- 현장 범위는 참가지역 정보가 없는 공고(K-apt 등)에만 적용하는 추천 범위이며 자격 판정이 아니다.
+
+공고 검색에는 **나라장터 / 추가 수집처** 탭이 있다. 추가 수집처 탭은 같은 조건(기간·검색어·업종 범위·본점 소재지·금액·계약방식·상태)으로 K-apt·LH·K-water·D2B의 공사 공고를 보여주며, 공고마다 **조건 일치 / 확인 필요 / 불충족**을 표시한다.
+- D2B·LH는 제공되는 면허·참가지역으로 판정한다.
+- K-apt·K-water는 이 정보를 주지 않아 "확인 필요"이고, 기본값에서는 방수·도장·도색·차선 등 제목 후보만 보인다.
+- 참가지역, 현장 위치(K-apt 단지 소재 시·도, D2B `lc`), LH 담당 본부는 서로 다른 정보로 표시한다.
+- 같은 공고의 여러 차수는 최신 차수 하나로 보이고, 취소공고는 "마감 전"에서 빠진다.
+- 이 행들은 지역 비교·단가 분석 등 나라장터 분석에 섞지 않는다.
+
 첫 조회는 DB에서 일관된 스냅샷을 만든다. 이후에는 메모리와 DB 옆 `ui-cache/`의 압축 JSON을 재사용한다. DB·WAL의 파일 상태 및 분석 코드가 바뀌면 디스크 캐시는 무효화한다. **조회 새로고침**으로 현재 DB 상태를 다시 확인한다. 화면 하단의 조회 시점과 스냅샷을 확인한다. UI rerun·검색·다운로드는 수집/API 호출을 시작하지 않는다. 캐시는 실데이터이므로 DB와 함께 `.local/` 아래에 유지한다.
 
-**API 연동 메뉴는 후속 HTTP API의 설계 화면이다.** endpoint·앱 인증·원격 연결은 아직 구현하지 않았다. UI와 분리된 `query_service.py`를 추후 HTTP 어댑터에서 재사용한다. 공개 서비스 배포는 수행하지 않았다.
+**공고 추천 API (2026-10-08, 로컬).** `./start-api.ps1`(또는 `.venv/Scripts/python -m bidloc.api --port 8600`)로 실행한다. 회사 조건을 넣으면 마감 전 공고를 나라장터와 추가 수집처에서 함께 추천한다.
+
+```http
+GET http://127.0.0.1:8600/api/v1/recommendations?region=남양주&license=4992&limit=20
+```
+
+- **입력:** `region`은 "남양주 / 남양주시 / 경기도 남양주시"를 받고, 같은 이름이 여러 곳이면 후보를 400으로 돌려준다. `license`는 "4992"나 "도장습식방수"를 받는다(현재 4992만 검증).
+- **선택 파라미터:** `sources`, `keyword`, `min_amount`/`max_amount`, `include_unknown`, `title_shortlist`, `site_provinces`(참가지역 정보가 없는 공고의 현장 시·도 범위, 기본 본점 시·도, `all` 가능), `sort`, `limit`/`offset`.
+- **응답 순서:** "조건 일치"가 먼저, 그다음 "확인 필요"가 마감이 빠른 순으로 온다.
+- **응답 내용:** 공고마다 면허·참가지역 판정과 근거, 참가지역과 현장 위치(별도 필드), 종류별 금액, 근거 응답 ID가 붙는다. 조건 때문에 빠진 공고는 `counts.held_back`에 사유별 건수로 남는다.
+- **다른 엔드포인트:** `/api/v1/collection/status`, `/api/v1/health`.
+
+서버는 읽기 전용이며 수집이나 외부 API 호출을 하지 않는다.
+- 나라장터 스냅샷은 뒤에서 읽고 갱신한다. DB가 바뀌면 다시 읽는 데 수 분이 걸리며, 그동안은 직전 스냅샷으로 응답한다. 첫 로딩 중에는 `complete:false`와 경고를 붙이고 추가 수집처만 돌려준다.
+- 기본으로 127.0.0.1에만 열린다. 다른 주소로 열려면 환경변수 `BIDLOC_API_TOKEN`이 필요하며, 그때 요청은 `Authorization: Bearer <token>`을 보낸다.
+- 공개 배포는 수행하지 않았다(별도 승인 사항).
+- 공고 상세·지역 비교 API는 아직 미구현이다.
 
 GitHub: [SmartWay-jhyeo/bid-location-lab](https://github.com/SmartWay-jhyeo/bid-location-lab) (비공개). `.env`, DB, 원본 응답, 캐시, 실데이터 export와 로그는 업로드하지 않는다. 목업 이미지의 공고·수치는 합성 예시다. 과거 단계 기록은 아래에 보존한다.
 

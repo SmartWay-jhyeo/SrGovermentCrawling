@@ -103,6 +103,13 @@ def parse_body(body: bytes | None, *, encoding_hint: str | None = None) -> Parse
     fmt = sniff_format(body)
     if fmt == "empty":
         return ParsedBody(fmt="empty", kind="unknown", shape="empty-body")
+    if fmt == "xml":
+        # LH declares EUC-KR in XML while HTTP may omit the charset.
+        declaration = re.search(br'<\?xml\b[^>]*encoding\s*=\s*[\"\x27]([^\"\x27]+)', body[:200], re.I)
+        if declaration:
+            declared = declaration.group(1).decode("ascii", errors="replace").lower()
+            if declared in {"euc-kr", "cp949", "utf-8", "utf8"}:
+                encoding_hint = declared
     text = _decode(body, encoding_hint)
     if fmt == "json":
         return _parse_json(text)
@@ -237,7 +244,10 @@ def _find(elem: Any, name: str) -> Any:
 
 def _parse_xml(text: str) -> ParsedBody:
     try:
-        root = SafeET.fromstring(text.encode("utf-8"))
+        # Already decoded text; remove the stale byte-encoding declaration.
+        normalized = re.sub(r'(<\?xml\b[^>]*encoding\s*=\s*)[\"\x27][^\"\x27]+[\"\x27]',
+                            r'\1"UTF-8"', text, count=1, flags=re.I)
+        root = SafeET.fromstring(normalized.encode("utf-8"))
     except Exception as exc:  # defusedxml 차단 예외 포함
         return ParsedBody(fmt="xml", kind="unknown", shape="xml:invalid", problems=[f"xml parse error: {type(exc).__name__}"],
                           text_snippet=text.strip()[:300])
@@ -269,12 +279,19 @@ def _parse_xml(text: str) -> ParsedBody:
     parsed.page_no = _to_int(_child_text(body, "pageNo"))
     parsed.num_of_rows = _to_int(_child_text(body, "numOfRows"))
     items_elem = _find(body, "items")
+    direct_items = [child for child in list(body) if _local(child.tag) == "item"]
     if items_elem is None:
-        parsed.shape = "xml:response:items=absent"
-        parsed.items = None
-        return parsed
+        if not direct_items:
+            parsed.shape = "xml:response:items=absent"
+            parsed.items = None
+            return parsed
+        children = direct_items
+    else:
+        children = list(items_elem)
+        if direct_items:
+            parsed.problems.append("both body.item and body.items present")
     out: list[ItemDict] = []
-    for item in list(items_elem):
+    for item in children:
         if _local(item.tag) != "item":
             parsed.problems.append(f"unexpected element in items: {_local(item.tag)}")
             parsed.items = None
@@ -287,7 +304,7 @@ def _parse_xml(text: str) -> ParsedBody:
             record[_local(fld.tag)] = fld.text if fld.text is not None else ""
         out.append(record)
     parsed.items = out
-    parsed.shape = "xml:response:items.item*" if out else "xml:response:items=empty"
+    parsed.shape = ("xml:response:body.item*" if items_elem is None else "xml:response:items.item*") if out else "xml:response:items=empty"
     return parsed
 
 

@@ -1,5 +1,22 @@
 # 공식 출처와 확인 범위
 
+## 남은 조달 수집처 — 2026-10-08 이어받기 검증
+
+[CLAUDE_REMAINING_PROVIDERS_FINDINGS.md](CLAUDE_REMAINING_PROVIDERS_FINDINGS.md)가 아래 항목의 최신 판정이다.
+
+- [방위사업청_군수품조달정보 입찰공고_GW](https://www.data.go.kr/data/15158416/openapi.do): 시설 경쟁입찰공고 목록·상세 operation을 2026-10-08 활용신청 후 실응답으로 확인했다(LIVE_VERIFIED). 앞선 “최신 시설공사 API 미확정”을 정정한다.
+- [조달청_나라장터 공공데이터개방표준서비스](https://www.data.go.kr/data/15058815/openapi.do): `ppsNtceYn`·`refNtceNo` 정의상 자체조달 공고를 포함할 수 있다. 그러나 2026-10-07 하루 1,909건은 모두 `ppsNtceYn=Y`였다(LIVE_VERIFIED, 하루 표본).
+- [조달청_자체전자조달시스템 입찰공고 내역](https://www.data.go.kr/data/15159273/fileData.do): 조달청이 자체조달 공고를 연계받아 제공한다는 공식 설명이다. 제공 형태는 데이터허브 보고서이며 OpenAPI가 아니다.
+- [한국도로공사_전자입찰 및 개찰정보](https://www.data.go.kr/data/15166374/fileData.do), [국가철도공단_입찰정보](https://www.data.go.kr/data/3070357/fileData.do): 연간 파일이다. 최신 공고 수집 경로가 아니다.
+
+## 남은 조달 수집처 — 2026-10-08 추가 검증
+
+한전의 실제 endpoint·인증·공사 구분, 나라장터 경유 코레일 공사 실수집, D2B·도로공사·국가철도공단 자료의 제공 범위 및 S2B 미확정 항목은 [REMAINING_PROVIDER_VALIDATION.md](REMAINING_PROVIDER_VALIDATION.md)에 기록했다. 이 문서의 최신 판정이 앞선 ‘한전 endpoint 미확정 / 철도 전체 미확정’을 대체한다. 공식 안내 확인과 인증 실호출은 별도 상태다.
+
+## 추가 조달 API — 2026-10-08
+
+K-apt·LH·K-water 공식 포털 Swagger와 한전 LINK API 안내를 확인했다. 문서와 실응답 상태, 서비스별 주소는 [PROVIDER_API_VALIDATION.md](PROVIDER_API_VALIDATION.md), 호출 계약은 `config/provider_api_catalog.yaml`에 기록한다. 세 서비스는 별도 공통 키와 Encoding 설정을 적용해 2026-10-08 실제 응답·조회 범위 내 페이지 수집을 확인했다. 앞선 403/30 기록은 오류 이력이며 현재 미수집 상태를 뜻하지 않는다. 현장/참가지역·정정 이력·공종 전수 분류는 별도 검증 대상이다.
+
 ## 실행형 앱 구현 문서 — 2026-10-08 추가
 
 Streamlit 1.64.0을 설치해 Python 3.11.9에서 실행했다. 아래 공식 문서를 구현 기준으로 확인했으며 실제 호출 가능 여부는 AppTest와 브라우저로 따로 검사한다.

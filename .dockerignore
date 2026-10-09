@@ -1,0 +1,18 @@
+# 실데이터·키·로컬 환경은 이미지에 넣지 않는다(실행 시 볼륨으로 연결).
+.git
+.local
+.env
+.env.*
+!.env.example
+.venv
+.claude
+outputs
+__pycache__
+**/__pycache__
+*.py[cod]
+.pytest_cache
+*.sqlite
+*.sqlite3
+*.sqlite3-*
+*.db
+*.log
