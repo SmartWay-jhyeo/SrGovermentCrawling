@@ -52,3 +52,6 @@ dist/
 /outputs/sigongnote_market_stage2_verified/
 /outputs/sigongnote_market_nationwide/
 /outputs/(공고문)2025년 교통노면표시 유지보수 연간단가공사(관리도로 북부권).hwp
+
+# NAS 전송용 데이터 압축본(실데이터, Git 제외)
+.local.zip

@@ -1,8 +1,8 @@
 # 면허 입지 분석기 — Synology Container Manager(Docker 24) 배포.
 # 이 폴더(git clone) 안에 PC에서 복사한 .local/ 와 .env 를 둔다. 둘 다 Git 제외이며 이미지에도 들어가지 않는다.
 #
-#   수집기만 실행:        sudo docker compose up -d --build
-#   화면·API도 실행:      sudo docker compose --profile web up -d --build   (.env에 BIDLOC_API_TOKEN 필요)
+#   수집기만 실행:        sudo /usr/local/bin/docker compose up -d --build   (NAS의 sudo PATH에 docker가 없어 절대경로 필수)
+#   화면·API도 실행:      sudo /usr/local/bin/docker compose --profile web up -d --build   (.env에 BIDLOC_API_TOKEN 필요)
 #
 # 같은 NAS의 시공노트를 보호하려고 모든 서비스에 메모리·CPU 상한을 건다.
 name: bid-location-lab
