@@ -31,15 +31,30 @@ OPERATIONS = {
     "kwater": "cntrwkList",
     "d2b": "getFcltyCmpetBidPblancList",
     "pps_openstd": "getDataSetOpnStdBidPblancInfo",
+    # 누리장터 private bids: construction list plus its licence-limit and participation-region lists (same service).
+    "nuri": "getPrvtBidPblancListInfoCnstwk",
+    "nuri_lcns": "getPrvtBidPblancListInfoLicenseLimit",
+    "nuri_rgn": "getPrvtBidPblancListInfoPrtcptPsblRgn",
+    "kospo": "getDataService",
+    "komipo": "getData",
 }
 G2B_PROVIDERS = frozenset({"bid_notice", "bid_notice_reg", "bid_notice_etc"})
+NURI_PROVIDERS = frozenset({"nuri", "nuri_lcns", "nuri_rgn"})
+# Services the user approved on the provider account: kapt/lh/kwater first, then d2b/pps_openstd (2026-10-08)
+# and nuri/kospo/komipo (2026-10-12).
+PROVIDER_ACCOUNT = frozenset({"kapt", "lh", "kwater", "d2b", "pps_openstd", "kospo", "komipo"} | NURI_PROVIDERS)
 DATE_FIELDS = {"bid_notice": "bidNtceDt", "bid_notice_reg": "rgstDt", "bid_notice_etc": "rgstDt",
                "kapt": "bidRegDate", "lh": "tndrbidRegDt", "kwater": "tndrPblancDe", "d2b": "pblancDate",
-               "pps_openstd": "bidNtceDate"}
+               "pps_openstd": "bidNtceDate", "nuri": "rgstDt", "nuri_lcns": "rgstDt", "nuri_rgn": "rgstDt",
+               # 남부발전 publishes 공고일자 only in the construction group (suffix 3); 중부발전 uses 공고일시.
+               "kospo": "annday3", "komipo": "bidStart"}
 # Categorical fields that separate source system, notice version and business type.
 VALUE_COUNT_FIELDS = {**{p: ("rgstTyNm", "ntceKindNm") for p in G2B_PROVIDERS},
                       "d2b": ("busiDivs", "pblancSe", "cntrctMth"),
-                      "pps_openstd": ("ppsNtceYn", "bsnsDivNm", "bidNtceSttusNm")}
+                      "pps_openstd": ("ppsNtceYn", "bsnsDivNm", "bidNtceSttusNm"),
+                      "nuri": ("bidNtceClsfc", "ntceDivNm", "rgnLmtDivNm", "cntrctMthdNm", "bidMethdNm"),
+                      "nuri_lcns": ("lcnsLmtNm",), "nuri_rgn": ("prtcptPsblRgnNm",),
+                      "kospo": ("category", "limreg4"), "komipo": ("workType", "bidRace", "orderName")}
 G2B_OWN_REGISTRATION = "조달청 또는 나라장터 자체 공고건"
 # Detail lookups need the full composite key from a list row; a notice number alone is not enough.
 DETAIL_OPERATIONS = {"d2b": "getFcltyCmpetBidPblancDetail"}
@@ -47,14 +62,15 @@ DETAIL_KEYS = {"d2b": ("pblancYear", "pblancSeCode", "pblancNo", "pblancOdr", "c
 
 
 def service_id(provider: str) -> str:
-    return "bid_notice" if provider in G2B_PROVIDERS else provider
+    if provider in G2B_PROVIDERS:
+        return "bid_notice"
+    return "nuri" if provider in NURI_PROVIDERS else provider
 
 
 def settings_for_provider(settings: Settings, provider: str) -> Settings:
     if provider in G2B_PROVIDERS:
         return settings
-    # The user approved D2B and the PPS open-standard service on the same account as kapt/lh/kwater.
-    if provider not in {"kapt", "lh", "kwater", "d2b", "pps_openstd"}:
+    if provider not in PROVIDER_ACCOUNT:
         raise ValueError("unsupported provider")
     # Missing credentials must not fall back to the unrelated G2B credential.
     return replace(settings, service_key=settings.provider_service_key,
@@ -78,6 +94,17 @@ def query_params(provider: str, begin: date, end: date, page: int = 1, rows: int
             raise ValueError("pps_openstd probe range must stay within one month")
         params.update(bidNtceBgnDt=begin.strftime("%Y%m%d") + "0000",
                       bidNtceEndDt=end.strftime("%Y%m%d") + "2359", type="json")
+    elif provider in NURI_PROVIDERS:
+        # Reference guide: inqryDiv 1 = 등록일시 (all three operations), bounds are YYYYMMDDHHMM.
+        params.update(inqryDiv="1", inqryBgnDt=begin.strftime("%Y%m%d") + "0000",
+                      inqryEndDt=end.strftime("%Y%m%d") + "2359", type="json")
+    elif provider == "kospo":
+        # Swagger says only 조회 시작월/종료월. Live 2026-10-12: YYYYMM returned 0 rows, YYYYMMDD returned rows
+        # whose 공고일자 all fell inside the range.
+        params.update(strSdate=begin.strftime("%Y%m%d"), strEdate=end.strftime("%Y%m%d"))
+    elif provider == "komipo":
+        # Portal table and guide: YYYYMMDD, both required.
+        params.update(strDateS=begin.strftime("%Y%m%d"), strDateE=end.strftime("%Y%m%d"))
     elif provider == "kapt":
         # YYYYMMDD is a probe hypothesis until accepted with dated rows.
         params.update(startDate=begin.strftime("%Y%m%d"), endDate=end.strftime("%Y%m%d"))

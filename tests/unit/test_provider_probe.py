@@ -111,7 +111,7 @@ def test_missing_provider_key_blocks_without_g2b_fallback(project, monkeypatch, 
     assert "PROVIDER_DATA_GO_KR_SERVICE_KEY" in output
 
 
-@pytest.mark.parametrize("provider", ["d2b", "pps_openstd"])
+@pytest.mark.parametrize("provider", ["d2b", "pps_openstd", "nuri", "nuri_lcns", "nuri_rgn", "kospo", "komipo"])
 def test_new_service_missing_provider_key_blocks_without_g2b_fallback(project, monkeypatch, capsys, provider):
     import bidloc.provider_probe as module
     from bidloc.config import load_settings
@@ -238,3 +238,42 @@ def test_invalid_provider_key_message_hides_value(project):
     with pytest.raises(ConfigError) as exc:
         load_settings(project, environ={"PROVIDER_DATA_GO_KR_SERVICE_KEY": "SYNTHETIC SECRET"})
     assert "SYNTHETIC" not in str(exc.value)
+
+
+def test_nuri_operations_share_one_service_and_use_registration_date_bounds():
+    from bidloc.provider_probe import service_id
+    for provider in ("nuri", "nuri_lcns", "nuri_rgn"):
+        assert service_id(provider) == "nuri"
+        assert query_params(provider, BEGIN, END, rows=100) == {
+            "pageNo": "1", "numOfRows": "100", "inqryDiv": "1", "inqryBgnDt": "202610010000",
+            "inqryEndDt": "202610082359", "type": "json"}
+
+
+def test_kospo_uses_observed_day_format_and_komipo_documented_dates():
+    # Swagger names months, but the live service returned rows only for YYYYMMDD bounds.
+    assert query_params("kospo", BEGIN, END) == {"pageNo": "1", "numOfRows": "5", "strSdate": "20261001",
+                                                 "strEdate": "20261008"}
+    assert query_params("komipo", BEGIN, END) == {"pageNo": "1", "numOfRows": "5", "strDateS": "20261001",
+                                                  "strDateE": "20261008"}
+
+
+def test_new_provider_operations_are_in_catalog_with_their_status():
+    from pathlib import Path
+    from bidloc.provider_probe import OPERATIONS, service_id
+    catalog = load_catalog(Path(__file__).resolve().parents[2] / "config/provider_api_catalog.yaml")
+    status = {p: catalog.operation(service_id(p), OPERATIONS[p]).status
+              for p in ("nuri", "nuri_lcns", "nuri_rgn", "kospo", "komipo")}
+    assert status == {"nuri": "LIVE_VERIFIED", "nuri_lcns": "LIVE_VERIFIED", "nuri_rgn": "LIVE_VERIFIED",
+                      "kospo": "LIVE_VERIFIED", "komipo": "BLOCKED"}
+    assert catalog.operation("komipo", "getData").auth_param == "ServiceKey"
+
+
+def test_agency_success_code_needs_live_evidence():
+    data = {"catalog_schema_version": 1, "services": {"x": {
+        "base_url": "https://apis.data.go.kr/X/y", "status": "DOCUMENTED",
+        "operations": {"op": {"status": "DOCUMENTED", "auth_param": "serviceKey", "success_result_codes": ["800"]}}}}}
+    assert any("success_result_codes" in e for e in validate_catalog_data(data))
+    data["services"]["x"]["operations"]["op"]["live_evidence"] = {"runs": ["r"]}
+    assert not validate_catalog_data(data)
+    data["services"]["x"]["operations"]["op"]["success_result_codes"] = "800"
+    assert any("success_result_codes" in e for e in validate_catalog_data(data))

@@ -122,3 +122,17 @@ def test_day_list_is_kept_once_per_profile_and_never_from_partial_data(tmp_path)
     assert ensure_daily(tmp_path, NOW.date(), dict(profile, site_scope="all"), result(["A", "B"]))  # profile changed
     partial = dict(result(["Z"]), complete=False)
     assert not ensure_daily(tmp_path, date(2026, 10, 10), profile, partial)
+
+
+def test_profile_with_every_source_follows_sources_added_later(tmp_path, monkeypatch):
+    import bidloc.recommend as module
+    saved = save_profile(tmp_path, PROFILE, VOCAB, now=NOW)
+    assert saved["all_sources"] and {"nuri", "kospo"} <= set(saved["sources"])
+    picked = save_profile(tmp_path / "picked", {**PROFILE, "sources": ["g2b", "lh"]}, VOCAB, now=NOW)
+    assert not picked["all_sources"]
+    seen = []
+    monkeypatch.setattr(module, "recommend", lambda *a, **k: seen.append(k["sources"]))
+    module.recommend_for_profile(saved, [], [], known_regions=VOCAB)
+    module.recommend_for_profile(picked, [], [], known_regions=VOCAB)
+    # None means every source known now, including ones added after the profile was saved.
+    assert seen == [None, ["g2b", "lh"]]

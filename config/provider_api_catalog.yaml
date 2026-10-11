@@ -1176,3 +1176,566 @@ services:
           description: '데이터 작성 기준일자'
         - name: totalCount
           description: '전체 결과 수'
+  nuri:
+    service_name_ko: 조달청_누리장터 민간입찰공고서비스
+    status: DOCUMENTED
+    base_url: https://apis.data.go.kr/1230000/ao/PrvtBidNtceService
+    source: https://www.data.go.kr/data/15129456/openapi.do
+    checked_on: '2026-10-12'
+    swagger_sha256: 7b3bc3e4e159d763aad9f02f8402d0ddd2e1ede3da957b42857b21d5341a790b
+    notes:
+    - 활용신청은 사용자가 PROVIDER_DATA_GO_KR_SERVICE_KEY 계정으로 했다(2026-10-12 사용자 확인).
+    - 참고문서 '조달청_OpenAPI참고자료_누리장터_민간입찰공고서비스_1.0.docx'(sha256 12163aa98fdc24bc…) 기준으로 공사 목록 inqryDiv는 1=등록일시, 2=공고게시일시, 3=개찰일시, 4=입찰공고번호다. inqryBgnDt/inqryEndDt는 YYYYMMDDHHMM이며 조회구분 1·2·3에서 필수다.
+    - 면허제한·참가가능지역 조회의 inqryDiv는 1=등록일시, 2=입찰공고번호(bidNtceOrd 함께)다(참고문서).
+    - 응답 일시는 'YYYY-MM-DD HH:MM:SS' 형식이다(참고문서). refAmt는 투찰 상한인 기준금액, asignBdgtAmt는 배정예산금액이다. 추정가격 필드는 없다.
+    - rgnLmtDivNm은 '투찰제한' 또는 '공고서 참조'로만 표기된다(참고문서). 참가가능지역 이름은 별도 오퍼레이션에서 받는다.
+    - aptCeoAdrs는 공고기관(아파트) 주소이며 공사현장 주소가 아니다. cnstwkDtlList는 [순번^공사명^공사현장명^준공기한일자] 반복 형식이다(참고문서).
+    - ofclNm·ofclTelNo·ofclEmail·aptMngOfficeTelNo는 담당자 연락처라 화면·API에 내보내지 않는다.
+    - 물품·용역·기타와 PPSSrch(검색조건) 오퍼레이션은 공사 목적 범위가 아니어서 제외했다.
+    - 2026-10-12 실응답(등록일시 2026-10-08 하루, inqryDiv=1): 공사 10건(bidNtceClsfc 모두 민간공사), 면허제한 17행, 참가가능지역 20행이었다. 면허·지역 목록은 공사 외 공고도 포함하므로 (bidNtceNo, bidNtceOrd)로 공사 공고에 붙인다. 같은 공고의 세 목록 rgstDt는 같았다.
+    - 같은 응답에서 rgnLmtDivNm '투찰제한' 6건은 모두 참가가능지역 행이 있었고, '공고서 참조' 4건은 없었다. 직찰 2건은 bidBeginDt·bidClseDt가 비어 있고 opengDt만 있었다. asignBdgtAmt '0'은 시공자 선정·제안 공고에서 나왔다.
+    - lcnsLmtNm은 '면허명/코드 4자리', permsnIndstrytyList는 '[면허명/코드]' 형식이었다(예: 건축공사업/0002, [토목건축공사업/0003]).
+    operations:
+      getPrvtBidPblancListInfoCnstwk:
+        status: LIVE_VERIFIED
+        live_evidence:
+          checked_on_kst: '2026-10-12'
+          runs:
+          - provider-probe-20261012T072824-c5c3e304
+          source_response_ids: [9961]
+        auth_param: serviceKey
+        title_ko: '민간입찰공고정보에 대한 공사조회'
+        business_div: construction
+        request_params:
+        - name: serviceKey
+          description: '공공데이터포털에서 받은 인증키'
+          required_swagger: true
+        - name: pageNo
+          description: '페이지번호'
+          required_swagger: true
+        - name: numOfRows
+          description: '한 페이지 결과 수'
+          required_swagger: true
+        - name: type
+          description: '타입'
+          required_swagger: false
+        - name: inqryDiv
+          description: '조회구분'
+          required_swagger: true
+        - name: inqryBgnDt
+          description: '조회시작일시'
+          required_swagger: false
+        - name: inqryEndDt
+          description: '조회종료일시'
+          required_swagger: false
+        - name: bidNtceNo
+          description: '입찰공고번호'
+          required_swagger: false
+        response_fields:
+        - name: resultCode
+          description: '결과코드'
+        - name: resultMsg
+          description: '결과메세지'
+        - name: totalCount
+          description: '전체 결과 수'
+        - name: numOfRows
+          description: '한 페이지 결과 수'
+        - name: pageNo
+          description: '페이지번호'
+        - name: refNo
+          description: '참조번호'
+        - name: ntceNm
+          description: '공고명'
+        - name: rgstDt
+          description: '등록일시'
+        - name: bidNtceNo
+          description: '입찰공고번호'
+        - name: bidNtceOrd
+          description: '입찰공고차수'
+        - name: bidNtceClsfc
+          description: '입찰공고분류'
+        - name: nticeDt
+          description: '게시일시'
+        - name: ntceDivNm
+          description: '공고구분명'
+        - name: ntceInsttNm
+          description: '공고기관명'
+        - name: bidMethdNm
+          description: '입찰방식명'
+        - name: cntrctMthdNm
+          description: '계약방법명'
+        - name: sucsfbidMthdNm
+          description: '낙찰방법명'
+        - name: rbidDivNm
+          description: '재입찰구분명'
+        - name: bidQlfctNm
+          description: '입찰자격명'
+        - name: ofclNm
+          description: '담당자명'
+        - name: ofclTelNo
+          description: '담당자전화번호'
+        - name: ofclEmail
+          description: '담당자이메일'
+        - name: bidBeginDt
+          description: '입찰개시일시'
+        - name: bidClseDt
+          description: '입찰마감일시'
+        - name: opengDt
+          description: '개찰일시'
+        - name: opengPlce
+          description: '개찰장소'
+        - name: bidWgrnteeRcptClseDt
+          description: '입찰보증서접수마감일시'
+        - name: sptDscrptDt
+          description: '현장설명일시'
+        - name: sptDscrptPlce
+          description: '현장설명장소'
+        - name: vatInclsnYnNm
+          description: '부가가치세포함여부명'
+        - name: refAmtUseYn
+          description: '기준금액사용여부'
+        - name: refAmtOpenYn
+          description: '기준금액공개여부'
+        - name: refAmt
+          description: '기준금액'
+        - name: asignBdgtAmt
+          description: '배정예산금액'
+        - name: refAmtDscrpt
+          description: '기준금액설명'
+        - name: rgnLmtDivNm
+          description: '지역제한구분명'
+        - name: dtchacOpenDt
+          description: '역경매공개일시'
+        - name: dtchacBgnPrce
+          description: '역경매시작가격'
+        - name: dtchacRmrk
+          description: '역경매비고'
+        - name: bssAmtDtlScrnUrl
+          description: '기초금액상세화면URL'
+        - name: dtchacMinRdctnRt
+          description: '역경매최소인하비율'
+        - name: dtchacBidprcLmtNum
+          description: '역경매투찰제한횟수'
+        - name: dtchacAutoEtTm
+          description: '역경매자동연장시각'
+        - name: dtchacBeforeBidDocClseDt
+          description: '역경매이전입찰서마감일시'
+        - name: dtchacEtBidDocClseDt
+          description: '역경매연장입찰문서마감일시'
+        - name: cnstwkDtlList
+          description: '공사상세목록'
+        - name: ntceSpecDocUrl1
+          description: '공고규격서URL1'
+        - name: ntceSpecDocUrl2
+          description: '공고규격서URL2'
+        - name: ntceSpecDocUrl3
+          description: '공고규격서URL3'
+        - name: ntceSpecDocUrl4
+          description: '공고규격서URL4'
+        - name: ntceSpecDocUrl5
+          description: '공고규격서URL5'
+        - name: ntceSpecDocUrl6
+          description: '공고규격서URL6'
+        - name: ntceSpecDocUrl7
+          description: '공고규격서URL7'
+        - name: ntceSpecDocUrl8
+          description: '공고규격서URL8'
+        - name: ntceSpecDocUrl9
+          description: '공고규격서URL9'
+        - name: ntceSpecDocUrl10
+          description: '공고규격서URL10'
+        - name: ntceSpecDocNm1
+          description: '공고규격서명1'
+        - name: aptHshldNum
+          description: '아파트세대수'
+        - name: aptCmplNum
+          description: '아파트동수'
+        - name: aptHeatMethdNm
+          description: '아파트난방방식'
+        - name: aptSubactLrgeNdCmpnintFclty
+          description: '아파트부대및복리시설'
+        - name: aptTotar
+          description: '아파트연면적'
+        - name: aptMngcstLevyArea
+          description: '아파트관리비부과면적'
+        - name: ntceSpecDocNm9
+          description: '공고규격서명9'
+        - name: ntceSpecDocNm10
+          description: '공고규격서명10'
+        - name: aptHsmpNm
+          description: '아파트단지명'
+        - name: aptCeoAdrs
+          description: '아파트대표자주소'
+        - name: aptMngOfficeTelNo
+          description: '아파트관리사무소전화번호'
+        - name: aptHmpgUrl
+          description: '아파트홈페이지URL'
+        - name: ntceSpecDocNm2
+          description: '공고규격서명2'
+        - name: ntceSpecDocNm3
+          description: '공고규격서명3'
+        - name: ntceSpecDocNm4
+          description: '공고규격서명4'
+        - name: ntceSpecDocNm5
+          description: '공고규격서명5'
+        - name: ntceSpecDocNm6
+          description: '공고규격서명6'
+        - name: ntceSpecDocNm7
+          description: '공고규격서명7'
+        - name: ntceSpecDocNm8
+          description: '공고규격서명8'
+      getPrvtBidPblancListInfoLicenseLimit:
+        status: LIVE_VERIFIED
+        live_evidence:
+          checked_on_kst: '2026-10-12'
+          runs:
+          - provider-probe-20261012T072824-c5c3e304
+          source_response_ids: [9962]
+        auth_param: serviceKey
+        title_ko: '민간입찰공고정보에 대한 면허제한정보조회'
+        business_div: mixed_by_bidNtceNo
+        request_params:
+        - name: serviceKey
+          description: '공공데이터포털에서 받은 인증키'
+          required_swagger: true
+        - name: pageNo
+          description: '페이지번호'
+          required_swagger: true
+        - name: numOfRows
+          description: '한 페이지 결과 수'
+          required_swagger: true
+        - name: type
+          description: '타입'
+          required_swagger: false
+        - name: inqryDiv
+          description: '조회구분'
+          required_swagger: true
+        - name: inqryBgnDt
+          description: '조회시작일시'
+          required_swagger: false
+        - name: inqryEndDt
+          description: '조회종료일시'
+          required_swagger: false
+        - name: bidNtceNo
+          description: '입찰공고번호'
+          required_swagger: false
+        - name: bidNtceOrd
+          description: '입찰공고차수'
+          required_swagger: false
+        response_fields:
+        - name: resultMsg
+          description: '결과메세지'
+        - name: resultCode
+          description: '결과코드'
+        - name: rgstDt
+          description: '등록일시'
+        - name: bidNtceNo
+          description: '입찰공고번호'
+        - name: bidNtceOrd
+          description: '입찰공고차수'
+        - name: lmtGrpNo
+          description: '제한그룹번호'
+        - name: lmtSno
+          description: '제한순번'
+        - name: lcnsLmtNm
+          description: '면허제한명'
+        - name: permsnIndstrytyList
+          description: '허용업종목록'
+        - name: totalCount
+          description: '전체 결과 수'
+        - name: numOfRows
+          description: '한 페이지 결과 수'
+        - name: pageNo
+          description: '페이지번호'
+      getPrvtBidPblancListInfoPrtcptPsblRgn:
+        status: LIVE_VERIFIED
+        live_evidence:
+          checked_on_kst: '2026-10-12'
+          runs:
+          - provider-probe-20261012T072824-c5c3e304
+          source_response_ids: [9963]
+        auth_param: serviceKey
+        title_ko: '민간입찰공고정보에 대한 참가가능지역정보조회'
+        business_div: mixed_by_bidNtceNo
+        request_params:
+        - name: serviceKey
+          description: '공공데이터포털에서 받은 인증키'
+          required_swagger: true
+        - name: pageNo
+          description: '페이지번호'
+          required_swagger: true
+        - name: numOfRows
+          description: '한 페이지 결과 수'
+          required_swagger: true
+        - name: type
+          description: '타입'
+          required_swagger: false
+        - name: inqryDiv
+          description: '조회구분'
+          required_swagger: true
+        - name: inqryBgnDt
+          description: '조회시작일시'
+          required_swagger: false
+        - name: inqryEndDt
+          description: '조회종료일시'
+          required_swagger: false
+        - name: bidNtceNo
+          description: '입찰공고번호'
+          required_swagger: false
+        - name: bidNtceOrd
+          description: '입찰공고차수'
+          required_swagger: false
+        response_fields:
+        - name: resultMsg
+          description: '결과메세지'
+        - name: resultCode
+          description: '결과코드'
+        - name: prtcptPsblRgnNm
+          description: '참가가능지역명'
+        - name: rgstDt
+          description: '등록일시'
+        - name: bidNtceNo
+          description: '입찰공고번호'
+        - name: bidNtceOrd
+          description: '입찰공고차수'
+        - name: lmtSno
+          description: '제한순번'
+        - name: totalCount
+          description: '전체 결과 수'
+        - name: numOfRows
+          description: '한 페이지 결과 수'
+        - name: pageNo
+          description: '페이지번호'
+  kospo:
+    service_name_ko: 한국남부발전(주)_입찰공고현황_GW
+    status: DOCUMENTED
+    base_url: https://apis.data.go.kr/B552520/BidsInfo
+    source: https://www.data.go.kr/data/15125329/openapi.do
+    checked_on: '2026-10-12'
+    swagger_sha256: 529dc5f375edda09ef67eaad4a0caa7d058b9e5dae7fbc21ceec0e346a8c9044
+    notes:
+    - 활용신청은 사용자가 PROVIDER_DATA_GO_KR_SERVICE_KEY 계정으로 했다(2026-10-12 사용자 확인).
+    - strSdate/strEdate는 '조회 시작월/종료월'로만 적혀 있고 값 형식은 명세에 없다. 포털 참고문서도 없다.
+    - 2026-10-12 실응답에서 YYYYMM(202610~202610)은 0건이었고, YYYYMMDD(20261001~20261012)는 35건이 왔다. 35건의 annday3(공고일자)는 모두 범위 안이었다. 수집은 YYYYMMDD로 한다.
+    - 같은 응답의 category 값은 '공사영역'(공고번호 E로 시작, 14건)과 '자재'(G로 시작, 21건)뿐이었다. 공사영역에는 공사와 용역이 섞여 있고 둘을 나누는 필드는 없다.
+    - 공사영역 14건 모두 estprc3(추정가격(공사)) = estprcv3(부가세포함추정가격(공사)) × 1.1이었다. 라벨과 크기 관계가 반대이므로 어느 값도 추정가격으로 쓰지 않고 표기값 그대로 따로 보관한다.
+    - limreg4(지역제한)는 35건 모두 공백이었다. 면허 필드는 없다. 공사영역의 공고일자·입찰신청·투찰 일시는 접미사 3 필드(annday3·applsdt3·appledt3·subsdt3·subedt3)에 있다.
+    - Swagger상 전체 건수는 body.paginginfo.totalCnt다. 표준 body.totalCount 위치가 아니다.
+    - category(입찰정보범주)의 값 목록은 명세에 없다. 필드 접미사(2 자재, 3 공사, 4 경매)는 필드 설명에서 읽은 묶음이다.
+    - dprtnm·name·ofcphn·email은 담당자 정보라 화면·API에 내보내지 않는다.
+    operations:
+      getDataService:
+        status: LIVE_VERIFIED
+        live_evidence:
+          checked_on_kst: '2026-10-12'
+          runs:
+          - provider-probe-20261012T073414-7051bfbb
+          - provider-probe-20261012T073514-8a15888c
+          source_response_ids: [9964, 9966]
+        # 2026-10-12 실응답 2회 모두 resultCode 800 / resultMsg 'NORMAL_SERVICE.'(0건·35건)였다.
+        success_result_codes: ['800']
+        auth_param: serviceKey
+        title_ko: '입찰공고정보조회 서비스'
+        business_div: mixed_by_category
+        request_params:
+        - name: serviceKey
+          description: '공공데이터포털에서 받은 인증키'
+          required_swagger: true
+        - name: pageNo
+          description: '페이지번호'
+          required_swagger: false
+        - name: numOfRows
+          description: '한 페이지 결과 수'
+          required_swagger: false
+        - name: strSdate
+          description: '조회 시작월'
+          required_swagger: true
+        - name: strEdate
+          description: '조회 종료월'
+          required_swagger: true
+        response_fields:
+        - name: resultCode
+          description: '결과코드'
+        - name: resultMsg
+          description: '결과메세지'
+        - name: announceno
+          description: '공고(구매)번호'
+        - name: title
+          description: '입찰건명(공고명)'
+        - name: estprc12
+          description: '추정가격'
+        - name: delday1
+          description: '납품기한(예비자재)'
+        - name: deadl2
+          description: '입찰신청마감'
+        - name: execdt2
+          description: '입찰진행일시'
+        - name: delday2
+          description: '납품기한(자재)'
+        - name: annday3
+          description: '공고일자'
+        - name: applsdt3
+          description: '입찰신청시작시간'
+        - name: appledt3
+          description: '입찰신청종료시간'
+        - name: subsdt3
+          description: '투찰시작시간'
+        - name: subedt3
+          description: '투찰마감시간'
+        - name: estprc3
+          description: '추정가격(공사)'
+        - name: estprcv3
+          description: '부가세포함추정가격(공사)'
+        - name: estbas3
+          description: '예비가격기초금액'
+        - name: startprc4
+          description: '시작가격'
+        - name: currprc4
+          description: '현재가격'
+        - name: rausdt4
+          description: '경매시작일시'
+        - name: rauedt4
+          description: '경매종료일시'
+        - name: limreg4
+          description: '지역제한'
+        - name: planno
+          description: '구매계획번호'
+        - name: category
+          description: '입찰정보범주'
+        - name: dprtnm
+          description: '담당자 소속'
+        - name: name
+          description: '담당자 성명'
+        - name: ofcphn
+          description: '담당자 사무실번호'
+        - name: email
+          description: '담당자 이메일'
+        - name: delplac2
+          description: '납품장소'
+        - name: totalCnt
+          description: '총 건수'
+        - name: pageNo
+          description: '페이지번호'
+        - name: numOfRows
+          description: '한페이지 출력건수'
+  komipo:
+    service_name_ko: 한국중부발전(주)_공사입찰정보
+    status: DOCUMENTED
+    base_url: https://apis.data.go.kr/B552521/cbid
+    source: https://www.data.go.kr/data/15084782/openapi.do
+    checked_on: '2026-10-12'
+    guide_sha256: be24bd199eb9b7cd292f8e59cfb109bb24f0ce27b3bf6cccc5576e012335a247
+    notes:
+    - 활용신청은 사용자가 PROVIDER_DATA_GO_KR_SERVICE_KEY 계정으로 했다(2026-10-12 사용자 확인).
+    - 포털은 Swagger 없이 요청·응답 표를 게시한다. 이 항목은 포털 표와 참고문서 '활용가이드(GW)_공사입찰정보V1.1_중부.docx'를 옮겼다.
+    - 참고문서는 SSL 없음·http 주소를 적었지만 포털 요청주소는 https://apis.data.go.kr/B552521/cbid/getData다. https만 쓴다.
+    - strDateS/strDateE는 YYYYMMDD이며 필수다. 교환 형식은 XML만 문서화돼 있고, 예제의 totalCount는 header 안에 있다.
+    - 일시 필드(bidStart·bidJoinEnd·bidThrowEnd 등)는 YYYYMMDDHHMMSS 14자리다(참고문서 예제).
+    - entPriv(입찰참가자격 기타)는 자유문이며 담당자 연락처가 섞일 수 있다. creUser는 공고등록자 사번이라 내보내지 않는다.
+    - 2026-10-12 실호출 4회: 인증은 통과했다. 참고문서 예시 기간(20140101~20141231)은 resultCode 00, header.totalCount 285로 정상이었다. 20261001~20261012(100행·10행)와 20250101~20251231은 모두 resultCode 02 '데이터베이스 에러입니다.'였다. 최근 공고를 받을 수 없어 수집에 연결하지 않는다(BLOCKED).
+    - 정상 응답의 demandName(계약의뢰부서)에는 담당자 이름이 괄호로 붙어 있다. 내보낼 때 이름을 제거해야 한다.
+    operations:
+      getData:
+        status: BLOCKED
+        live_evidence:
+          checked_on_kst: '2026-10-12'
+          runs:
+          - provider-probe-20261012T073414-7051bfbb
+          - provider-probe-20261012T073644-95d0e3ca
+          - provider-probe-20261012T073659-7cde409b
+          - provider-probe-20261012T073715-6a4200f7
+          source_response_ids: [9965, 9967, 9968, 9969]
+        auth_param: ServiceKey
+        title_ko: '중부발전 공사입찰정보 조회'
+        business_div: construction_by_workType
+        request_params:
+        - name: ServiceKey
+          description: '공공데이터포털에서 받은 인증키'
+          required_swagger: true
+        - name: pageNo
+          description: '페이지번호'
+          required_swagger: true
+        - name: numOfRows
+          description: '한 페이지 결과 수'
+          required_swagger: true
+        - name: strDateS
+          description: '조회 시작일자 연월일(YYYYMMDD)'
+          required_swagger: true
+        - name: strDateE
+          description: '조회 종료일자 연월일(YYYYMMDD)'
+          required_swagger: true
+        - name: BidNo
+          description: '공고번호'
+          required_swagger: false
+        - name: BidName
+          description: '입찰건명'
+          required_swagger: false
+        response_fields:
+        - name: resultCode
+          description: '결과코드'
+        - name: resultMsg
+          description: '결과메세지'
+        - name: numOfRows
+          description: '한 페이지 결과 수'
+        - name: pageNo
+          description: '페이지 번호'
+        - name: totalCount
+          description: '전체결과수'
+        - name: bidNo
+          description: '공고번호'
+        - name: bidName
+          description: '입찰건명'
+        - name: bidRace
+          description: '계약방법'
+        - name: bidMethod
+          description: '입찰방법'
+        - name: sucMethod
+          description: '낙찰방법'
+        - name: orderName
+          description: '발주기관'
+        - name: demandName
+          description: '계약의뢰부서'
+        - name: presumedMoney
+          description: '추정금액(단위 : 원)'
+        - name: presumedValue
+          description: '추정가격(단위 : 원)'
+        - name: basisMoney
+          description: '예가기초금액(단위 : 원)'
+        - name: bidStart
+          description: '공고일시'
+        - name: bidJoinStart
+          description: '입찰신청시작일시'
+        - name: bidJoinEnd
+          description: '입찰신청마감일시'
+        - name: bidThrowStart
+          description: '투찰시작일시'
+        - name: bidThrowEnd
+          description: '투찰마감일시'
+        - name: fieldExplanationYn
+          description: '현장설명여부'
+        - name: guaranteeRate
+          description: '보증금율'
+        - name: fieldExplanationDt
+          description: '현장설명날짜'
+        - name: pqInspectionYn
+          description: 'pq심사구분'
+        - name: unionContractYn
+          description: '공동수급여부'
+        - name: unionCnt
+          description: '공동수급업체갯수'
+        - name: workType
+          description: '도급구분'
+        - name: lotteryNum
+          description: '추정갯수'
+        - name: openMethod
+          description: '개찰방법'
+        - name: creUser
+          description: '공고등록자'
+        - name: creDate
+          description: '공고등록일자'
+        - name: entPriv
+          description: '입찰참가자격(기타)'
+        - name: dogubMoney
+          description: '도급금액'
+        - name: sajungMoney
+          description: '사정금액'

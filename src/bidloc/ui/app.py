@@ -297,10 +297,10 @@ def provider_section(all_rows, pmeta, filters, meta):
     a,b,c,d=st.columns([2.2,1.3,1.1,1.6],vertical_alignment='bottom')
     sources=a.multiselect('출처',list(SOURCE_LABELS),default=list(SOURCE_LABELS),format_func=SOURCE_LABELS.get,key='provider_sources')
     scope=b.selectbox('현장 범위',list(SITE_SCOPES),format_func=SITE_SCOPES.get,key='provider_site_scope',
-                      help='참가지역 정보가 없는 공고(K-apt 등)에만 적용합니다. 본점 소재지를 골랐을 때 사용합니다.')
+                      help='참가지역 정보가 없는 공고(K-apt·남부발전 등)에만 적용합니다. 본점 소재지를 골랐을 때 사용합니다.')
     unmatched=c.toggle('조건 불충족도 보기',key='provider_unmatched')
     shortlist=d.toggle('면허 정보 없는 출처는 제목 후보만',value=True,key='provider_shortlist',
-                       help='K-apt·K-water는 면허·참가지역 정보를 주지 않습니다. 켜면 방수·도장·도색·차선 등 제목 후보만 보입니다.')
+                       help='K-apt·K-water·남부발전은 면허·참가지역 정보를 주지 않고, 누리장터는 면허제한 목록이 없는(공고서 참조) 공고가 있습니다. 켜면 방수·도장·도색·차선 등 제목 후보만 보입니다.')
     rows,held=search_provider_notices(all_rows,filters,sources=set(sources),include_unmatched=unmatched,title_shortlist=shortlist)
     provinces=resolve_site_provinces(scope,canonical_region(filters.hq)) if filters.hq else None
     kept=[r for r in rows if not outside_site_scope(r['site_region'],r['evaluation']['region'],provinces)]
@@ -349,11 +349,13 @@ def profile_form(profile, directory, vocabulary):
             scopes=list(SITE_SCOPES)
             scope=st.radio('현장 범위 (참가지역 정보가 없는 공고에만 적용)',scopes,horizontal=True,format_func=SITE_SCOPES.get,
                            index=scopes.index(p['site_scope']) if p.get('site_scope') in scopes else 0,key='profile_scope')
-            sources=st.multiselect('출처',list(ALL_SOURCES),default=p.get('sources') or list(ALL_SOURCES),
+            sources=st.multiselect('출처',list(ALL_SOURCES),
+                                   default=list(ALL_SOURCES) if p.get('all_sources') else p.get('sources') or list(ALL_SOURCES),
                                    format_func=ALL_SOURCES.get,key='profile_sources')
             c,d=st.columns(2)
             unknown=c.toggle('확인 필요 공고도 추천',value=p.get('include_unknown',True),key='profile_unknown')
-            shortlist=d.toggle('K-apt·K-water는 제목 후보만',value=p.get('title_shortlist',True),key='profile_shortlist')
+            shortlist=d.toggle('면허 정보 없는 공고는 제목 후보만',value=p.get('title_shortlist',True),key='profile_shortlist',
+                               help='K-apt·K-water·남부발전과, 면허제한 목록이 없는(공고서 참조) 누리장터 공고에 적용합니다.')
             if st.form_submit_button('조건 저장',type='primary'):
                 try:
                     saved=save_profile(directory,{'region':region,'license':license,'site_scope':scope,'sources':sources,
@@ -513,10 +515,10 @@ def api_page():
         st.table([{'이름':n,'설명':d} for n,d in [
             ('region','본점 소재지. 남양주 / 남양주시 / 경기도 남양주시 (필수)'),
             ('license','면허. 4992 또는 도장습식방수 (현재 4992만 검증)'),
-            ('sources','g2b,kapt,lh,kwater,d2b 중 선택 (기본 전체)'),
+            ('sources','g2b,kapt,lh,kwater,d2b,nuri,kospo 중 선택 (기본 전체)'),
             ('keyword','공고명·번호·기관 검색어'),('min_amount / max_amount','추정가격 범위(원). 추정가격 없는 공고는 제외하고 건수로 표시'),
             ('include_unknown','false면 조건 일치만 (기본 true)'),
-            ('title_shortlist','K-apt·K-water를 방수·도장 등 제목 후보로 좁힘 (기본 true)'),
+            ('title_shortlist','면허 정보 없는 공고(K-apt·K-water·남부발전, 면허제한 목록이 없는 누리장터)를 방수·도장 등 제목 후보로 좁힘 (기본 true)'),
             ('site_provinces','참가지역 정보가 없는 공고의 현장 시·도 범위. 예: 경기도,서울특별시 / all (기본 본점 시·도)'),
             ('sort','deadline / notice_date / amount'),('limit / offset','페이지 (limit 1~200, 기본 50)')]])
 
@@ -558,14 +560,16 @@ def analysis_page(records, meta, filters):
 
 
 def provider_status(pmeta):
-    st.subheader('추가 수집처 (K-apt·LH·K-water·국방조달)')
+    st.subheader('추가 수집처 (K-apt·LH·K-water·국방조달·누리장터·남부발전)')
     if not pmeta.get('sources'):
         st.info('추가 수집처 미수집')
         return
     st.dataframe([{'출처':m['label'],'저장 공고 (최신 차수 기준)':m['notices'],'마지막 수집':(m['last_collected_at'] or '')[:19].replace('T',' '),
                    '수집일':m['last_snapshot'] or '수동 수집','마지막 작업 상태':m['last_status'],
                    '마지막 작업 수신/전체':f'{m["last_received"]} / {m["last_total"] if m["last_total"] is not None else "미확인"}',
-                   '수집 작업 수':m['jobs'],'상세 연결 (D2B)':m['details']} for m in pmeta['sources'].values()],hide_index=True,width='stretch')
+                   '수집 작업 수':m['jobs'],'상세 연결 (D2B)':m['details'],
+                   '보조 목록 (누리장터 면허·지역)':' · '.join(f'{k} {v}' for k,v in m['aux'].items()) if m.get('aux') else ''}
+                  for m in pmeta['sources'].values()],hide_index=True,width='stretch')
     st.caption('매일 자동수집은 최근 3일(K-water는 월 단위)을 다시 읽습니다. COMPLETE_RANGE는 요청 범위만 다 받았다는 뜻이며 전국 전수가 아닙니다.')
 
 
@@ -652,7 +656,7 @@ def main():
                     notice_list(rows,meta,filters)
                 else:
                     # Same conditions, separate sources: provider rows never join the G2B analysis records.
-                    g2b_tab,extra_tab=st.tabs(['나라장터','추가 수집처 (K-apt·LH·K-water·국방조달)'])
+                    g2b_tab,extra_tab=st.tabs(['나라장터','추가 수집처 (K-apt·LH·K-water·국방조달·누리장터·남부발전)'])
                     with g2b_tab:
                         notice_list(rows,meta,filters)
                     with extra_tab:

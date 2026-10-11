@@ -259,3 +259,21 @@ def test_empty_http_response_is_recorded_with_body_hash(project, catalog):
     row = b.conn.execute("SELECT raw_path, body_sha256, body_bytes FROM source_response").fetchone()
     assert row[0] and row[1] == hashlib.sha256(b"").hexdigest() and row[2] == 0
     assert (b.settings.raw_response_dir / row[0]).read_bytes() == b""
+
+
+def test_agency_success_code_applies_only_to_the_operation_that_documents_it(project: Path):
+    from bidloc.catalog import load_catalog
+    provider_catalog = load_catalog(project / "config" / "provider_api_catalog.yaml")
+    body = ("<response><header><resultCode>800</resultCode><resultMsg>NORMAL_SERVICE.</resultMsg></header><body>"
+            "<items><item><announceno>E1</announceno></item></items><paginginfo><pageNo>1</pageNo>"
+            "<numOfRows>10</numOfRows><totalCnt>1</totalCnt></paginginfo></body></response>").encode()
+    b = build_client(project, provider_catalog, lambda r: httpx.Response(200, content=body))
+    kospo = b.client.call("kospo", "getDataService", {"pageNo": "1", "numOfRows": "10", "strSdate": "20261001",
+                                                      "strEdate": "20261012"}, response_type=None)
+    assert kospo.outcome == Outcome.SUCCESS and kospo.items == [{"announceno": "E1"}] and kospo.total_count == 1
+    assert "catalog success code 800" in kospo.basis
+    stored = b.conn.execute("SELECT result_code FROM source_response WHERE id=?", (kospo.source_response_ids[0],)).fetchone()
+    assert stored[0] == "800"
+    other = b.client.call("komipo", "getData", {"pageNo": "1", "numOfRows": "10", "strDateS": "20261001",
+                                                "strDateE": "20261012"}, response_type=None)
+    assert other.outcome == Outcome.UNKNOWN_API_ERROR and other.items is None

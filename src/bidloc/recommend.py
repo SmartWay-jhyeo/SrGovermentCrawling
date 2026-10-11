@@ -32,7 +32,14 @@ NOTES = ["조건 일치도 참가자격 확정이 아닙니다. 주력분야·�
          "참가지역(참가 허용 지역), 현장 위치, 기관 위치는 서로 다른 정보입니다.",
          "확인 필요는 출처가 면허·참가지역을 주지 않았거나 자료가 비어 있다는 뜻이며 참가 가능을 뜻하지 않습니다.",
          "참가지역 정보가 없는 공고는 기본적으로 현장 시·도가 본점과 같은 것만 보여줍니다(site_provinces). 자격 판정이 아니라 추천 범위입니다.",
-         "같은 공고의 여러 차수는 최신 차수 하나로 보여줍니다. 출처 간 같은 사업의 중복은 합치지 않았습니다."]
+         "같은 공고의 여러 차수는 최신 차수 하나로 보여줍니다. 출처 간 같은 사업의 중복은 합치지 않았습니다.",
+         "누리장터는 추정가격 대신 배정예산·기준금액을, 남부발전은 라벨이 불명확한 금액 표기값을 따로 보여줍니다. 둘 다 추정가격 범위 조건에서는 빠집니다."]
+
+
+def iso_kst(value):
+    """One timestamp format for API clients (ISO 8601 with the KST offset); unparseable values pass through."""
+    parsed = parse_datetime(value)
+    return parsed.isoformat() if parsed else value
 
 
 class ProfileError(ValueError):
@@ -88,7 +95,7 @@ def g2b_items(records, hq, license, now):
                 "key": "g2b:" + d["key"], "source": "g2b", "source_label": SOURCES["g2b"], "title": d.get("bid_ntce_nm"),
                 "notice_no": d.get("bid_ntce_no"), "version": d.get("bid_ntce_ord"), "agency": d.get("ntce_instt_nm"),
                 "demand_agency": d.get("dminstt_nm"), "notice_date": (d.get("bid_ntce_dt") or "")[:10] or None,
-                "deadline": d.get("deadline"), "deadline_label": "입찰 마감", "estimated_price": d.get("presmpt_prce"),
+                "deadline": iso_kst(d.get("deadline")), "deadline_label": "입찰 마감", "estimated_price": d.get("presmpt_prce"),
                 "amounts": {"추정가격": d.get("presmpt_prce"), "배정예산": d.get("bdgt_amt")},
                 "allowed_regions": d.get("regions") or None,
                 "site": {"value": d.get("cnstrtsite_rgn_nm"), "kind": "공사현장(나라장터)"},
@@ -111,7 +118,7 @@ def provider_items(rows, hq, now, *, sources, keyword="", min_amount=None, max_a
         items.append({
             "key": r["key"], "source": r["source"], "source_label": r["source_label"], "title": r["title"],
             "notice_no": r["notice_no"], "version": r["version"], "agency": r["agency"], "demand_agency": None,
-            "notice_date": r["notice_date"], "deadline": r["deadline"], "deadline_label": r["deadline_label"],
+            "notice_date": r["notice_date"], "deadline": iso_kst(r["deadline"]), "deadline_label": r["deadline_label"],
             "estimated_price": r["amount"], "amounts": r["amounts"], "allowed_regions": r["allowed_regions"] or None,
             "site": {"value": r["site_region"], "kind": r["site_region_label"]},
             "license_requirements": r["licenses"] or None, "contract": r["contract"],
@@ -254,7 +261,9 @@ def save_profile(directory, profile, known_regions, now=None):
     sources = [s for s in (profile.get("sources") or SOURCES)]
     if not sources or set(sources) - set(SOURCES):
         raise ProfileError("출처를 하나 이상 고르세요.", sorted(SOURCES))
+    # Choosing every source means "all sources", so a source added later is included without re-saving.
     saved = {"region": region, "license": license, "site_scope": scope, "sources": sources,
+             "all_sources": set(sources) == set(SOURCES),
              "include_unknown": bool(profile.get("include_unknown", True)),
              "title_shortlist": bool(profile.get("title_shortlist", True)),
              "saved_at_kst": (now or now_kst()).isoformat()}
@@ -264,13 +273,14 @@ def save_profile(directory, profile, known_regions, now=None):
 
 def recommend_for_profile(profile, g2b_records, provider_rows, *, known_regions, g2b_ready=True, now=None, limit=100000):
     return recommend(g2b_records, provider_rows, region=profile["region"], license=profile["license"],
-                     sources=profile.get("sources"), include_unknown=profile.get("include_unknown", True),
+                     sources=None if profile.get("all_sources") else profile.get("sources"),
+                     include_unknown=profile.get("include_unknown", True),
                      title_shortlist=profile.get("title_shortlist", True), site_provinces=profile.get("site_scope"),
                      limit=limit, known_regions=known_regions, g2b_ready=g2b_ready, now=now)
 
 
 def same_profile(a, b):
-    keys = ("region", "license", "site_scope", "sources", "include_unknown", "title_shortlist")
+    keys = ("region", "license", "site_scope", "sources", "all_sources", "include_unknown", "title_shortlist")
     return bool(a and b) and all(a.get(k) == b.get(k) for k in keys)
 
 
