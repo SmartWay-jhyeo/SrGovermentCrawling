@@ -149,7 +149,11 @@ def test_daily_cli_runs_every_provider_and_d2b_details(project, monkeypatch):
             return response(1, total=1, items=[dict(D2B_ROW)] if service == "d2b" else [{"id": service}])
     monkeypatch.setattr(module, "DataGoKrClient", Client)
     assert module.main(["--live", "--daily", "--max-calls", "20"]) == 0
-    assert [s for s, _ in calls] == ["kapt", "lh", "kwater", "d2b", "d2b"]
+    assert [s for s, _ in calls] == ["kapt", "lh", "kwater", "d2b", "d2b", "nuri", "nuri", "nuri", "kospo"]
+    # 누리장터 licence and region lists are separate operations of the same approved service.
+    assert [o for s, o in calls if s == "nuri"] == ["getPrvtBidPblancListInfoCnstwk",
+                                                    "getPrvtBidPblancListInfoLicenseLimit",
+                                                    "getPrvtBidPblancListInfoPrtcptPsblRgn"]
     report = json.loads(next((settings.database_path.parent / "providers").glob("provider-collect-*.json")).read_text(encoding="utf-8"))
     assert report["snapshot"] == "2026-10-15" and report["details"]["d2b"]["fetched"] == 1
     import pytest

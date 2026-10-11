@@ -134,6 +134,12 @@ def validate_catalog_data(data: Any) -> list[str]:
                 errors.append(f"{where}: status가 허용값이 아니다")
             if status == "LIVE_VERIFIED" and not op.get("live_evidence"):
                 errors.append(f"{where}: LIVE_VERIFIED에는 live_evidence(실행 ID·일시)가 필요하다")
+            codes = op.get("success_result_codes")
+            if codes is not None:
+                if not isinstance(codes, list) or not codes or not all(isinstance(c, str) and c.strip() for c in codes):
+                    errors.append(f"{where}: success_result_codes는 비어 있지 않은 문자열 목록이어야 한다")
+                elif not op.get("live_evidence"):
+                    errors.append(f"{where}: success_result_codes에는 실응답 근거(live_evidence)가 필요하다")
             if not op.get("auth_param"):
                 errors.append(f"{where}: auth_param이 없다")
             seen: set[str] = set()

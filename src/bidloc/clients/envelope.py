@@ -272,17 +272,26 @@ def _parse_xml(text: str) -> ParsedBody:
     if body is None:
         parsed.shape = "xml:response:no-body"
         return parsed
-    parsed.total_count_raw = _child_text(body, "totalCount")
+    # Paging normally sits in body; 남부발전 puts it in body.paginginfo (totalCnt) and the 중부발전 guide example
+    # in the header. The first holder that carries a count is used, and its location is kept in the shape.
+    paging, count_name, paging_at = body, "totalCount", ""
+    if _child_text(body, "totalCount") is None:
+        for holder, name, label in ((_find(body, "paginginfo"), "totalCnt", ":paging=body.paginginfo"),
+                                    (header, "totalCount", ":paging=header")):
+            if holder is not None and _child_text(holder, name) is not None:
+                paging, count_name, paging_at = holder, name, label
+                break
+    parsed.total_count_raw = _child_text(paging, count_name)
     parsed.total_count = _to_int(parsed.total_count_raw)
     if parsed.total_count_raw not in (None, "") and parsed.total_count is None:
-        parsed.problems.append("totalCount is not a non-negative integer")
-    parsed.page_no = _to_int(_child_text(body, "pageNo"))
-    parsed.num_of_rows = _to_int(_child_text(body, "numOfRows"))
+        parsed.problems.append(f"{count_name} is not a non-negative integer")
+    parsed.page_no = _to_int(_child_text(paging, "pageNo"))
+    parsed.num_of_rows = _to_int(_child_text(paging, "numOfRows"))
     items_elem = _find(body, "items")
     direct_items = [child for child in list(body) if _local(child.tag) == "item"]
     if items_elem is None:
         if not direct_items:
-            parsed.shape = "xml:response:items=absent"
+            parsed.shape = "xml:response:items=absent" + paging_at
             parsed.items = None
             return parsed
         children = direct_items
@@ -295,7 +304,7 @@ def _parse_xml(text: str) -> ParsedBody:
         if _local(item.tag) != "item":
             parsed.problems.append(f"unexpected element in items: {_local(item.tag)}")
             parsed.items = None
-            parsed.shape = "xml:response:items=unexpected-child"
+            parsed.shape = "xml:response:items=unexpected-child" + paging_at
             return parsed
         record: ItemDict = {}
         for fld in list(item):
@@ -304,7 +313,8 @@ def _parse_xml(text: str) -> ParsedBody:
             record[_local(fld.tag)] = fld.text if fld.text is not None else ""
         out.append(record)
     parsed.items = out
-    parsed.shape = ("xml:response:body.item*" if items_elem is None else "xml:response:items.item*") if out else "xml:response:items=empty"
+    parsed.shape = (("xml:response:body.item*" if items_elem is None else "xml:response:items.item*") if out
+                    else "xml:response:items=empty") + paging_at
     return parsed
 
 

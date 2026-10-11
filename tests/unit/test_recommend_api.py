@@ -77,6 +77,8 @@ def test_recommendations_merge_sources_and_count_what_is_held_back():
     assert result["counts"]["held_back"] == {"참가지역 불일치": 2}
     kapt = next(i for i in result["items"] if i["source"] == "kapt")
     assert kapt["allowed_regions"] is None and kapt["site"] == {"value": "경기도", "kind": "단지 소재 시·도"}
+    # Every source returns the same ISO 8601 deadline format with the KST offset.
+    assert {i["deadline"][10] + i["deadline"][-6:] for i in result["items"]} == {"T+09:00"}
     assert result["profile"]["region"] == "경기도 남양주시" and result["complete"]
     only_match = recommend(RECORDS, ROWS, region="경기도 남양주시", include_unknown=False, known_regions=VOCAB, now=NOW)
     assert [i["key"] for i in only_match["items"]] == ["lh:L-MATCH", "g2b:G-MATCH-000"]
@@ -172,3 +174,21 @@ def test_snapshot_reload_keeps_serving_previous_data(tmp_path):
     snaps.refresh_g2b(wait=True)
     assert snaps.g2b()[1]["snapshot_id"] == "v2" and snaps.error is None
     assert snaps.providers()[1]["status"] == "NOT_COLLECTED"
+
+
+def test_new_sources_are_selectable_and_kospo_plant_estimate_only_narrows_scope():
+    from bidloc.recommend import SOURCES
+    assert {"nuri", "kospo"} <= set(SOURCES)
+    nuri = provider("N-MATCH", source="nuri", licenses=["그룹1-1 실내건축공사업/0005 (허용업종 [도장ㆍ습식ㆍ방수ㆍ석공사업/4992])"],
+                    license_codes={"0005", "4992"}, amount=None, amounts={"배정예산": 50000000, "기준금액(투찰 상한)": None})
+    far = provider("E-FAR", source="kospo", title="하동 합성설비 도장공사", business="미분류", licenses=None,
+                   allowed_regions=None, amount=None, license_basis="면허 정보 미제공", allowed_regions_basis="미제공",
+                   site_region="경상남도 하동군", site_region_label="제목의 발전소 이름으로 추정한 위치(공식 현장 정보 아님)")
+    result = recommend([], [nuri, far], region="남양주", sources=["nuri", "kospo"], known_regions=VOCAB, now=NOW)
+    assert [i["key"] for i in result["items"]] == ["nuri:N-MATCH"]
+    assert result["items"][0]["evaluation"]["state"] == "조건 일치" and result["items"][0]["estimated_price"] is None
+    assert result["counts"]["held_back"] == {"참가지역 정보 없음 · 현장 시·도 범위 밖": 1}
+    wide = recommend([], [nuri, far], region="남양주", sources=["kospo"], site_provinces="all", known_regions=VOCAB, now=NOW)
+    assert [(i["key"], i["evaluation"]["state"]) for i in wide["items"]] == [("kospo:E-FAR", "확인 필요")]
+    priced = recommend([], [nuri, far], region="남양주", sources=["nuri"], min_amount=1, known_regions=VOCAB, now=NOW)
+    assert priced["items"] == [] and priced["counts"]["held_back"] == {"추정가격 미제공": 1}

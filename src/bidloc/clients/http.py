@@ -251,6 +251,7 @@ class DataGoKrClient:
         url, url_redacted, params_redacted = build_request_url(
             op, self._settings.service_key, self._settings.service_key_format, request_params
         )
+        success_codes = frozenset(str(code) for code in op.raw.get("success_result_codes") or ())
         result = ApiResult(service_id=service_id, operation=operation, outcome=Outcome.BLOCKED_BY_POLICY,
                            basis="not started")
         max_attempts = self._settings.retry_max_attempts
@@ -280,7 +281,15 @@ class DataGoKrClient:
                 # 응답에 되돌아온 키는 파싱·오류 문자열 절단·후속 정규화 전에 제거한다.
                 safe_body, _ = REGISTRY.redact_bytes(body)
                 parsed = parse_body(safe_body, encoding_hint=_charset(content_type))
+                # An operation may document its own normal result code from live evidence (남부발전 800
+                # 'NORMAL_SERVICE.'). It is read as 00 for that operation only; the received code stays raw.
+                agency_success = parsed.kind == "standard" and parsed.result_code in success_codes
+                if agency_success:
+                    parsed.result_code = "00"
                 classification = classify_response(http_status, parsed)
+                if agency_success:
+                    classification = Classification(classification.outcome, classification.basis
+                                                    + f" (catalog success code {parsed.result_code_raw})")
                 if classification.outcome not in DATA_OK:
                     snippet = parsed.text_snippet or parsed.result_msg or ""
                     error_detail = f"{classification.basis}; {snippet}"[:1000]

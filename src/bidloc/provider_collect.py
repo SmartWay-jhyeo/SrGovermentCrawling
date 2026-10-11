@@ -18,14 +18,16 @@ from bidloc.clients.budget import OperationBudget
 from bidloc.clients.errors import RUN_FATAL, SERVICE_FATAL
 from bidloc.clients.http import DataGoKrClient, evaluate_live_gate
 from bidloc.config import PROVIDER_KEY_ENV, load_settings
-from bidloc.provider_probe import DETAIL_KEYS, DETAIL_OPERATIONS, OPERATIONS, query_params, settings_for_provider
+from bidloc.provider_probe import (DETAIL_KEYS, DETAIL_OPERATIONS, OPERATIONS, query_params, service_id,
+                                   settings_for_provider)
 from bidloc.redaction import redact
 from bidloc.repositories.db import default_migrations_dir, open_database
 from bidloc.repositories.raw_store import ResponseRecorder
 from bidloc.repositories.runs import RunRepository, new_run_id
 from bidloc.timeutil import now_kst
 
-PROVIDERS = ("kapt", "lh", "kwater", "d2b")
+# 누리장터 needs its licence-limit and participation-region lists (nuri_lcns, nuri_rgn) from the same window.
+PROVIDERS = ("kapt", "lh", "kwater", "d2b", "nuri", "nuri_lcns", "nuri_rgn", "kospo")
 
 
 def dump(value):
@@ -85,10 +87,10 @@ def collect_provider(client, budget, store, provider, begin, end, rows, contract
             return job
         page = job["next_page"]
         params = {**base, "pageNo": str(page)}
-        result = client.call(provider, OPERATIONS[provider], params, response_type=None)
+        result = client.call(service_id(provider), OPERATIONS[provider], params, response_type=None)
         reason = None
         if result.outcome.value == "QUOTA_DAILY_EXCEEDED":
-            budget.mark_quota_exhausted(provider, OPERATIONS[provider])
+            budget.mark_quota_exhausted(service_id(provider), OPERATIONS[provider])
         if not result.data_ok:
             status, reason = "BLOCKED", result.outcome.value
         else:
@@ -190,7 +192,8 @@ def daily_windows(today, providers, lookback_days):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--live", action="store_true")
-    parser.add_argument("--providers", help="comma list from kapt,lh,kwater,d2b (default kapt,lh,kwater; all with --daily)")
+    parser.add_argument("--providers", help="comma list from " + ",".join(PROVIDERS)
+                        + " (default kapt,lh,kwater; all with --daily)")
     parser.add_argument("--begin", type=date.fromisoformat)
     parser.add_argument("--end", type=date.fromisoformat)
     parser.add_argument("--daily", action="store_true", help="re-read the recent window as today's snapshot")

@@ -114,3 +114,33 @@ def test_xml_entity_expansion_is_blocked():
             b"<response><header><resultCode>&b;</resultCode></header></response>")
     parsed = parse_body(bomb)
     assert parsed.shape == "xml:invalid"
+
+
+def test_xml_paging_in_body_paginginfo_or_header_is_read_and_located():
+    # 남부발전 keeps the count in body.paginginfo.totalCnt (resultCode 800 is handled by the client, not here).
+    kospo = ("<response><header><resultCode>800</resultCode><resultMsg>NORMAL_SERVICE.</resultMsg></header>"
+             "<body><items><item><announceno>E1</announceno><estprc12> </estprc12></item></items>"
+             "<paginginfo><pageNo>1</pageNo><numOfRows>100</numOfRows><totalCnt>1</totalCnt></paginginfo></body></response>")
+    parsed = parse_body(kospo.encode())
+    assert (parsed.total_count, parsed.page_no, parsed.num_of_rows) == (1, 1, 100)
+    assert parsed.shape == "xml:response:items.item*:paging=body.paginginfo"
+    assert parsed.items == [{"announceno": "E1", "estprc12": " "}] and parsed.result_code == "800"
+    empty = parse_body(kospo.replace("<items><item><announceno>E1</announceno><estprc12> </estprc12></item></items>",
+                                     "<items/>").replace("<totalCnt>1</totalCnt>", "<totalCnt>0</totalCnt>").encode())
+    assert empty.items == [] and empty.total_count == 0
+    # 중부발전's guide example has the count in the header.
+    komipo = ("<response><header><resultCode>00</resultCode><resultMsg>ok</resultMsg><numOfRows>10</numOfRows>"
+              "<pageNo>1</pageNo><totalCount>285</totalCount></header><body><items><item><bidNo>E0</bidNo></item>"
+              "</items></body></response>")
+    parsed = parse_body(komipo.encode())
+    assert (parsed.total_count, parsed.page_no, parsed.num_of_rows) == (285, 1, 10)
+    assert parsed.shape.endswith(":paging=header")
+    bad = parse_body(kospo.replace("<totalCnt>1</totalCnt>", "<totalCnt>x</totalCnt>").encode())
+    assert bad.total_count is None and bad.problems == ["totalCnt is not a non-negative integer"]
+
+
+def test_body_total_count_keeps_priority_over_other_locations():
+    xml = ("<response><header><resultCode>00</resultCode><totalCount>9</totalCount></header><body><items/>"
+           "<totalCount>0</totalCount></body></response>")
+    parsed = parse_body(xml.encode())
+    assert parsed.total_count == 0 and parsed.shape == "xml:response:items=empty"

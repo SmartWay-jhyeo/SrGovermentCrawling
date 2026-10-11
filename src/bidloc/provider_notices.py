@@ -1,4 +1,4 @@
-"""Read-only view of staged provider notices (K-apt, LH, K-water, D2B) for the search screen.
+"""Read-only view of staged provider notices (K-apt, LH, K-water, D2B, 누리장터, 남부발전) for the search screen.
 
 Each provider keeps its own meaning. Participation regions, site location and the agency office stay
 in separate fields, every amount keeps its own label, and a condition a provider does not publish is
@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import re
 import sqlite3
-from collections import Counter
+from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -17,7 +17,8 @@ from bidloc.analysis import parse_datetime, region_matches
 from bidloc.provider_probe import DETAIL_KEYS
 from bidloc.timeutil import KST, now_kst
 
-SOURCE_LABELS = {"kapt": "K-apt 공동주택", "lh": "LH", "kwater": "K-water", "d2b": "국방조달(D2B)"}
+SOURCE_LABELS = {"kapt": "K-apt 공동주택", "lh": "LH", "kwater": "K-water", "d2b": "국방조달(D2B)",
+                 "nuri": "누리장터(민간)", "kospo": "남부발전"}
 # K-apt bidArea is documented as the 법정동 시·도 code; old and new province codes map to current names.
 SIDO_CODES = {"11": "서울특별시", "26": "부산광역시", "27": "대구광역시", "28": "인천광역시", "29": "광주광역시",
               "30": "대전광역시", "31": "울산광역시", "36": "세종특별자치시", "41": "경기도", "42": "강원특별자치도",
@@ -27,7 +28,10 @@ SIDO_NAMES = {"서울": "서울특별시", "부산": "부산광역시", "대구"
               "광주": "광주광역시", "대전": "대전광역시", "울산": "울산광역시", "세종": "세종특별자치시",
               "경기": "경기도", "강원": "강원특별자치도", "강원도": "강원특별자치도", "충북": "충청북도",
               "충남": "충청남도", "전북": "전북특별자치도", "전라북도": "전북특별자치도", "전남": "전라남도",
-              "경북": "경상북도", "경남": "경상남도", "제주": "제주특별자치도", "제주도": "제주특별자치도"}
+              "경북": "경상북도", "경남": "경상남도", "제주": "제주특별자치도", "제주도": "제주특별자치도",
+              # '서울시' style site text (누리장터). '광주시' is left out: it is also 경기도 광주시.
+              "서울시": "서울특별시", "부산시": "부산광역시", "대구시": "대구광역시", "인천시": "인천광역시",
+              "대전시": "대전광역시", "울산시": "울산광역시", "세종시": "세종특별자치시"}
 # Licence 4992 is 도장·습식·방수·석공사업. Name matching is only used where a provider gives names, not codes.
 LICENSE_4992_TERMS = ("도장", "습식", "방수", "석공")
 # Title words for the licence-4992 kind of work; used only to shortlist providers that publish no licence data.
@@ -37,9 +41,19 @@ KAPT_KIND = {"1": "신규공고", "2": "수정공고", "3": "재공고"}
 KAPT_CONTRACT = {"01": "일반경쟁", "02": "제한경쟁", "03": "지명경쟁"}
 # Observed only: the K-apt Swagger says "코드정의서 참조" and no code table is published.
 KAPT_BUSINESS = {"01": "용역", "02": "공사", "03": "용역", "04": "물품", "05": "기타"}
-LINK_HOSTS = {"www.k-apt.go.kr"}
+LINK_HOSTS = {"www.k-apt.go.kr", "www.g2b.go.kr"}
 # Providers that publish no licence or participation-region data at all.
-NO_CONDITION_SOURCES = {"kapt", "kwater"}
+NO_CONDITION_SOURCES = {"kapt", "kwater", "kospo"}
+# 누리장터 licence-limit and participation-region lists cover every business type; they join construction
+# notices by (bidNtceNo, bidNtceOrd).
+NURI_AUX = ("nuri_lcns", "nuri_rgn")
+# 남부발전 category values observed on 2026-10-12. 공사영역 mixes construction and services with no field to split them.
+KOSPO_BUSINESS = {"공사영역": "미분류", "자재": "물품"}
+# 남부발전 plants named in titles, used only to narrow the site scope of notices without location data. It is an
+# estimate from the title, labelled as such; it never decides eligibility.
+KOSPO_PLANTS = {"신인천": "인천광역시", "남제주": "제주특별자치도", "한림": "제주특별자치도", "하동": "경상남도 하동군",
+                "삼척": "강원특별자치도 삼척시", "영월": "강원특별자치도 영월군", "안동": "경상북도 안동시", "부산": "부산광역시"}
+KOSPO_PLANT_IN_TITLE = re.compile(r"(?<![가-힣])(" + "|".join(KOSPO_PLANTS) + r")(?=복합|빛드림|본부|화력|발전|\s|\d|#|$)")
 
 
 def store_path(database_path):
@@ -196,11 +210,125 @@ def d2b_row(item, detail, *meta):
     return row
 
 
+def nuri_licenses(rows):
+    """Licence rows as listed (group-sequence order) plus every 4-digit code in names and permitted lists."""
+    entries, codes = [], set()
+    for r in sorted(rows, key=lambda r: (to_int(r.get("lmtGrpNo")) or 0, to_int(r.get("lmtSno")) or 0)):
+        name, permitted = clean(r.get("lcnsLmtNm")), clean(r.get("permsnIndstrytyList"))
+        codes |= set(re.findall(r"/\s*(\d{4})\s*$", name or "")) | set(re.findall(r"/\s*(\d{4})\s*\]", permitted or ""))
+        entries.append(f"그룹{clean(r.get('lmtGrpNo')) or '?'}-{clean(r.get('lmtSno')) or '?'} {name or '면허명 없음'}"
+                       + (f" (허용업종 {permitted})" if permitted else ""))
+    return entries, codes
+
+
+def nuri_sites(text):
+    """공사현장명 from cnstwkDtlList entries '[순번^공사명^공사현장명^준공기한일자]'."""
+    sites = []
+    for entry in re.split(r"\]\s*,?\s*\[", (clean(text) or "").strip("[]")):
+        parts = entry.split("^")
+        if len(parts) >= 4 and clean(parts[-2]) and clean(parts[-2]) not in sites:
+            sites.append(clean(parts[-2]))
+    return sites
+
+
+def nuri_row(item, licence_rows, region_rows, covered, *meta):
+    row = base_row("nuri", (clean(item.get("bidNtceNo")) or "",), *meta)
+    kind, method = clean(item.get("ntceDivNm")), clean(item.get("bidMethdNm"))
+    registered = iso_date(item.get("rgstDt"))
+    close, opening = iso_datetime(item.get("bidClseDt")), iso_datetime(item.get("opengDt"))
+    budget, reference = to_int(item.get("asignBdgtAmt")), to_int(item.get("refAmt"))
+    sites = nuri_sites(item.get("cnstwkDtlList"))
+    regions = []
+    for r in sorted(region_rows, key=lambda r: to_int(r.get("lmtSno")) or 0):
+        name = canonical_region(r.get("prtcptPsblRgnNm"))
+        if name and name not in regions:
+            regions.append(name)
+    licenses, codes = nuri_licenses(licence_rows)
+    links = [clean(item.get(f"ntceSpecDocUrl{n}")) for n in range(1, 11)]
+    link = next((u for u in links if u and u.startswith("https://www.g2b.go.kr/")), None)
+    row.update(notice_no=clean(item.get("bidNtceNo")),
+               version=" ".join(x for x in (clean(item.get("bidNtceOrd")), kind) if x) or None,
+               title=clean(item.get("ntceNm")), agency=clean(item.get("ntceInsttNm")), business="공사",
+               business_basis="공사 전용 오퍼레이션(getPrvtBidPblancListInfoCnstwk)",
+               notice_date=iso_date(item.get("nticeDt")) or registered,
+               deadline=close or opening,
+               deadline_label="입찰 마감" if close else "개찰 일시(입찰 마감 미제공)" if opening else None,
+               # 누리장터 publishes no 추정가격; 배정예산 and the bid-cap 기준금액 stay under their own labels.
+               amounts={"배정예산": budget or None, "기준금액(투찰 상한)": reference or None},
+               site_region=sites[0] if sites else None, site_region_label="공사현장명(cnstwkDtlList)",
+               office=clean(item.get("aptCeoAdrs")), contract=clean(item.get("cntrctMthdNm")),
+               cancelled=kind == "취소공고", url=link, url_label="누리장터 공고서 첨부" if link else None)
+    row["amount_label"] = "추정가격 미제공(배정예산·기준금액 별도)"
+    if budget == 0:
+        row["flags"].append("배정예산 0 표시는 미제공으로 처리")
+    if len(sites) > 1:
+        row["flags"].append(f"공사현장 {len(sites)}곳")
+    if not close and opening:
+        row["flags"].append("입찰 마감 미제공 · 개찰 일시로 표시")
+    if method and method != "전자입찰":
+        row["flags"].append(f"입찰방식 {method}")
+    limit_kind = clean(item.get("rgnLmtDivNm"))
+    if regions:
+        row["allowed_regions"], row["allowed_regions_basis"] = regions, "참가가능지역(PrtcptPsblRgn)"
+    elif not covered("nuri_rgn", registered):
+        row["allowed_regions_basis"] = "참가가능지역 목록 미수집"
+        row["flags"].append("참가가능지역 미수집")
+    elif limit_kind == "투찰제한":
+        row["allowed_regions_basis"] = "지역제한(투찰제한) 표시인데 참가가능지역 행 없음"
+        row["flags"].append("투찰제한인데 참가가능지역 없음")
+    else:
+        row["allowed_regions_basis"] = "지역제한 구분: " + (limit_kind or "표시 없음")
+    if licenses:
+        row.update(licenses=licenses, license_codes=codes, license_text="\n".join(licenses),
+                   license_basis="면허제한(LicenseLimit) · 그룹·순번의 AND/OR 미확인")
+        if len(licenses) > 1:
+            row["flags"].append("복수 면허 행(AND/OR 미확인)")
+    elif not covered("nuri_lcns", registered):
+        row["license_basis"] = "면허제한 목록 미수집"
+        row["flags"].append("면허제한 미수집")
+    else:
+        row["licenses"], row["license_basis"] = [], "면허제한 행 없음(공고서 참조)"
+    return row
+
+
+def kospo_row(item, *meta):
+    row = base_row("kospo", (clean(item.get("announceno")) or "",), *meta)
+    category = clean(item.get("category"))
+    construction = category == "공사영역"
+    apply_end = iso_datetime(item.get("appledt3"))
+    bid_end = iso_datetime(item.get("subedt3")) or iso_datetime(item.get("deadl2"))
+    title = clean(item.get("title"))
+    plant = KOSPO_PLANT_IN_TITLE.search(title or "")
+    raw = {k: re.sub(r"\s", "", clean(item.get(k)) or "") for k in ("estprc3", "estprcv3", "estbas3", "estprc12")}
+    shown, vat, base, goods = (to_int(raw[k]) for k in ("estprc3", "estprcv3", "estbas3", "estprc12"))
+    row.update(notice_no=clean(item.get("announceno")), title=title, agency="한국남부발전",
+               business=KOSPO_BUSINESS.get(category or "", "미분류"),
+               business_basis=f"입찰정보범주(category) {category or '없음'}" + (" · 공사·용역 구분 없음" if construction else ""),
+               notice_date=iso_date(item.get("annday3")),
+               deadline=apply_end or bid_end,
+               deadline_label="입찰참가신청 마감(투찰 마감은 별도)" if apply_end else "투찰·입찰 마감" if bid_end else None,
+               # The two 공사 amounts are kept as labelled; observed values contradict the labels (see flags).
+               amounts=({"추정가격(공사) 표기값": shown or None, "부가세포함추정가격(공사) 표기값": vat or None,
+                         "예비가격기초금액": base or None} if construction else {"추정가격(자재)": goods or None}),
+               site_region=KOSPO_PLANTS[plant.group(1)] if plant else None,
+               site_region_label="제목의 발전소 이름으로 추정한 위치(공식 현장 정보 아님)" if plant else "현장 위치 정보 없음")
+    row["amount_label"] = "추정가격 라벨 불명확(표기값 별도)" if construction else "추정가격(자재)"
+    if construction:
+        row["flags"].append("공사·용역 구분 없음(공사영역)")
+        if shown and vat and shown * 10 == vat * 11:
+            row["flags"].append("금액 라벨 확인 필요: '추정가격' 표기값이 '부가세포함' 표기값의 1.1배")
+    if any(raw[k] == "0" for k in (("estprc3", "estprcv3", "estbas3") if construction else ("estprc12",))):
+        row["flags"].append("금액 0 표시는 미제공으로 처리")
+    return row
+
+
 def version_rank(row, item):
     if row["source"] == "lh":
         return to_int(item.get("bidDegree")) or 0
     if row["source"] == "d2b":
         return to_int(item.get("pblancOdr")) or 0
+    if row["source"] == "nuri":
+        return to_int(item.get("bidNtceOrd")) or 0
     return 0
 
 
@@ -222,15 +350,33 @@ def load_provider_notices(path):
                     "SELECT detail_key, payload_json, source_response_id FROM notice_detail WHERE provider='d2b'"):
                 keys = json.loads(detail_key)
                 details[tuple(keys.get(k, "") for k in DETAIL_KEYS["d2b"])] = (json.loads(payload), sid)
-        jobs = [dict(zip(("provider", "status", "received", "total_count", "updated_at", "snapshot"), r)) for r in conn.execute(
-            "SELECT provider, status, received, total_count, updated_at, " + ("snapshot" if has_snapshot else "NULL")
-            + " FROM collection_job ORDER BY updated_at")]
+        jobs = [dict(zip(("provider", "status", "received", "total_count", "updated_at", "snapshot", "params_json"), r))
+                for r in conn.execute("SELECT provider, status, received, total_count, updated_at, "
+                                      + ("snapshot" if has_snapshot else "NULL")
+                                      + ", params_json FROM collection_job ORDER BY updated_at")]
         observations = conn.execute(
             "SELECT o.provider, o.payload_json, o.source_response_id, j.updated_at, "
             + ("j.snapshot" if has_snapshot else "NULL") + " FROM notice_observation o JOIN collection_job j "
             "ON j.job_id=o.job_id ORDER BY j.updated_at, o.job_id, o.page_no, o.row_no").fetchall()
     finally:
         conn.close()
+    # 누리장터 licence/region rows by notice version; a later observation of the same row replaces an earlier one.
+    aux = {name: defaultdict(dict) for name in NURI_AUX}
+    for provider, payload, *_ in observations:
+        if provider in aux:
+            item = json.loads(payload)
+            key = (clean(item.get("bidNtceNo")) or "", clean(item.get("bidNtceOrd")) or "")
+            aux[provider][key][(clean(item.get("lmtGrpNo")), clean(item.get("lmtSno")))] = item
+    # Registration days whose list was fully received: there, a notice without rows really has none.
+    windows = {name: [] for name in NURI_AUX}
+    for job in jobs:
+        if job["provider"] in windows and job["status"] == "COMPLETE_RANGE":
+            params = json.loads(job["params_json"] or "{}")
+            windows[job["provider"]].append((iso_date(params.get("inqryBgnDt")), iso_date(params.get("inqryEndDt"))))
+
+    def covered(name, day):
+        return bool(day) and any(b and e and b <= day <= e for b, e in windows[name])
+
     latest, ranks, versions = {}, {}, set()
     for provider, payload, sid, collected_at, snapshot in observations:
         item = json.loads(payload)
@@ -243,6 +389,12 @@ def load_provider_notices(path):
             row = kwater_row(item, *meta_args)
         elif provider == "d2b":
             row = d2b_row(item, details.get(tuple(clean(item.get(k)) or "" for k in DETAIL_KEYS["d2b"])), *meta_args)
+        elif provider == "nuri":
+            key = (clean(item.get("bidNtceNo")) or "", clean(item.get("bidNtceOrd")) or "")
+            row = nuri_row(item, list(aux["nuri_lcns"][key].values()), list(aux["nuri_rgn"][key].values()), covered,
+                           *meta_args)
+        elif provider == "kospo":
+            row = kospo_row(item, *meta_args)
         else:
             continue
         rank = version_rank(row, item)
@@ -263,14 +415,22 @@ def load_provider_notices(path):
                 "last_collected_at": last["updated_at"], "last_snapshot": last["snapshot"], "last_status": last["status"],
                 "last_received": last["received"], "last_total": last["total_count"], "jobs": len(source_jobs),
                 "details": sum(1 for r in rows if r["source"] == source and r["detail_response_id"] is not None)}
+            if source == "nuri":
+                # The joined lists are collected as their own jobs; their last state is shown with the source.
+                meta["sources"][source]["aux"] = {
+                    name: next((j["status"] for j in reversed(jobs) if j["provider"] == name), "미수집") for name in NURI_AUX}
     meta["status"] = "COLLECTED" if rows else "EMPTY"
     return rows, meta
 
 
 def evaluate(row, hq):
     licenses = row["licenses"]
+    codes = row.get("license_codes")
     if licenses is None or not licenses:
         license_state = ("확인 필요", row["license_basis"])
+    elif codes is not None:
+        # Providers that give licence codes (누리장터) are matched by code, names included in permitted lists.
+        license_state = ("포함", row["license_basis"]) if "4992" in codes else ("불충족", "요구 면허·허용업종에 4992 없음")
     elif any(x.startswith("4992") or any(t in x for t in LICENSE_4992_TERMS) for x in licenses):
         license_state = ("포함", row["license_basis"])
     else:
@@ -321,6 +481,10 @@ def search_provider_notices(rows, filters, *, sources=None, include_unmatched=Fa
                 continue
             if row["source"] in NO_CONDITION_SOURCES and title_shortlist and not title_candidate(row["title"]):
                 held_back["면허 정보 없는 출처 · 제목 후보 아님"] += 1
+                continue
+            # 누리장터 notices whose licence limits are absent or not yet collected get the same title shortlist.
+            if row["source"] == "nuri" and not row["licenses"] and title_shortlist and not title_candidate(row["title"]):
+                held_back["누리장터 면허 정보 없음 · 제목 후보 아님"] += 1
                 continue
         if evaluation["region"] == "불충족" and not include_unmatched:
             held_back["참가지역 불일치"] += 1
