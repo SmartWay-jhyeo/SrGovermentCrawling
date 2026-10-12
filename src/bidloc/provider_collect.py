@@ -95,16 +95,22 @@ def collect_provider(client, budget, store, provider, begin, end, rows, contract
             status, reason = "BLOCKED", result.outcome.value
         else:
             status = "REVIEW_REQUIRED"
-            items = result.items if result.items is not None else ([] if result.total_count == 0 else None)
-            if items is None or result.total_count is None:
+            total = result.total_count
+            items = result.items if result.items is not None else ([] if total == 0 else None)
+            # LH answers a range with no bids (weekend, holiday) as resultCode 03 NODATA_ERROR with no body at all.
+            # On the first page of an untouched job that is an empty range, not a missing field. Anywhere later
+            # (rows already received, or a later page) it stays a review case. Seen on the NAS 2026-10-11/12.
+            if result.outcome.value == "NO_DATA" and page == 1 and job["received"] == 0 and job["total_count"] is None:
+                items, total = [], 0
+            if items is None or total is None:
                 reason = "missing items or totalCount"
-            elif job["total_count"] is not None and result.total_count != job["total_count"]:
+            elif job["total_count"] is not None and total != job["total_count"]:
                 reason = "totalCount changed; start a new range snapshot after review"
             elif result.page_no is not None and result.page_no != page:
                 reason = "returned page number mismatch"
-            elif job["received"] + len(items) > result.total_count:
+            elif job["received"] + len(items) > total:
                 reason = "received rows exceed totalCount"
-            elif len(items) < rows and job["received"] + len(items) < result.total_count:
+            elif len(items) < rows and job["received"] + len(items) < total:
                 reason = "short page before totalCount; page-size contract needs review"
             elif len(items) > rows:
                 reason = "returned page exceeds requested size"
@@ -120,14 +126,14 @@ def collect_provider(client, budget, store, provider, begin, end, rows, contract
                     reason = "duplicate payload across rows/pages; completeness uncertain"
                 else:
                     received = job["received"] + len(items)
-                    status = "COMPLETE_RANGE" if received == result.total_count else "RUNNING"
+                    status = "COMPLETE_RANGE" if received == total else "RUNNING"
                     sid = result.source_response_ids[-1]
                     with store:
                         store.execute("INSERT INTO collection_page VALUES(?,?,?,?,?)", (job_id, page, sid, fingerprint, len(items)))
                         store.executemany("INSERT INTO notice_observation VALUES(?,?,?,?,?,?,?)",
                             [(job_id, page, i, provider, sid, hashes[i], dump(item)) for i, item in enumerate(items)])
                         store.execute("UPDATE collection_job SET next_page=?,total_count=?,received=?,status=?,reason=NULL,updated_at=? WHERE job_id=?",
-                                      (page+1, result.total_count, received, status, now_kst().isoformat(), job_id))
+                                      (page+1, total, received, status, now_kst().isoformat(), job_id))
                     continue
         with store:
             store.execute("UPDATE collection_job SET status=?,reason=?,updated_at=? WHERE job_id=?",

@@ -57,6 +57,21 @@ def test_repeated_page_and_changed_count_never_mark_complete():
         assert job["received"] == 2
 
 
+def test_no_data_on_first_page_is_an_empty_range_but_later_pages_still_need_review():
+    # LH: resultCode 03 NODATA_ERROR, no body, for a weekend/holiday range (NAS 2026-10-11, 2026-10-12).
+    store = sqlite3.connect(":memory:"); init_store(store)
+    no_data = lambda page: SimpleNamespace(items=None, total_count=None, page_no=None, source_response_ids=[page],
+                                           data_ok=True, outcome=Outcome.NO_DATA)
+    job, calls = run(store, [no_data(1)])
+    assert calls == ["1"] and job["status"] == "COMPLETE_RANGE"
+    assert job["received"] == 0 and job["total_count"] == 0 and job["reason"] is None
+    assert store.execute("SELECT count(*) FROM notice_observation").fetchone()[0] == 0
+    # The same answer after rows were already received is not an empty range.
+    store = sqlite3.connect(":memory:"); init_store(store)
+    job, calls = run(store, [response(1, total=4, items=[{"id": "a"}, {"id": "b"}]), no_data(2)])
+    assert job["status"] == "REVIEW_REQUIRED" and "missing items" in job["reason"] and job["received"] == 2
+
+
 def test_failed_first_page_is_unknown_not_zero_total():
     store = sqlite3.connect(":memory:"); init_store(store)
     job, calls = run(store, [response(1, total=None, error=Outcome.AUTH_KEY_INVALID)])
