@@ -19,6 +19,8 @@ h3 { font-size:19px!important; }
 .subtitle { color:#526985; font-size:17px; margin-bottom:18px; }
 .muted { color:var(--muted); font-size:13px; line-height:1.65; }
 .notice-title { color:#2457db; font-size:15px; font-weight:650; line-height:1.6; overflow-wrap:anywhere; }
+a.notice-title { display:block; text-decoration:none; }
+a.notice-title:hover { text-decoration:underline; }
 .cell { font-size:14px; line-height:1.65; padding-top:4px; overflow-wrap:anywhere; }
 .money { text-align:right; font-variant-numeric:tabular-nums; }
 .status { color:#926018; background:#fff3da; display:inline-block; padding:5px 8px; border-radius:4px; font-size:12px; }

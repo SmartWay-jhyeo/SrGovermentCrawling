@@ -41,3 +41,30 @@ def _block_network(monkeypatch):
     monkeypatch.setattr(socket, "create_connection", deny)
     monkeypatch.setattr(socket, "getaddrinfo", deny)
     yield
+
+
+@pytest.fixture(autouse=True)
+def _no_ui_login(monkeypatch):
+    """화면 테스트는 이 PC의 .env에 로그인 값이 있어도 로그인 화면을 거치지 않는다. 로그인 자체를 검사하는
+    테스트는 `real_credentials` 픽스처나 자기 monkeypatch로 다시 덮어쓴다."""
+    import bidloc.ui.auth as auth
+
+    monkeypatch.setattr(auth, "load_credentials", lambda *a, **k: (None, None))
+    monkeypatch.delenv("BIDLOC_UI_REQUIRE_LOGIN", raising=False)
+
+
+@pytest.fixture
+def real_credentials(monkeypatch):
+    """`.env`·환경변수를 실제로 읽는 원래 load_credentials로 되돌린다."""
+    import bidloc.ui.auth as auth
+
+    monkeypatch.setattr(auth, "load_credentials", _REAL_LOAD_CREDENTIALS)
+
+
+def _real_load_credentials():
+    import bidloc.ui.auth as auth
+
+    return auth.load_credentials
+
+
+_REAL_LOAD_CREDENTIALS = _real_load_credentials()

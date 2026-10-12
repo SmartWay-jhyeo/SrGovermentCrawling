@@ -32,7 +32,7 @@ def test_hash_roundtrip_rejects_wrong_and_malformed():
         auth.hash_password("short")
 
 
-def test_credentials_prefer_environment_and_need_both(tmp_path: Path):
+def test_credentials_prefer_environment_and_need_both(tmp_path: Path, real_credentials):
     assert auth.load_credentials(tmp_path, environ={}) == (None, None)
     (tmp_path / ".env").write_text("BIDLOC_UI_USER=a@b.c\n", encoding="utf-8")
     assert auth.load_credentials(tmp_path, environ={}) == (None, None)
@@ -42,7 +42,7 @@ def test_credentials_prefer_environment_and_need_both(tmp_path: Path):
     assert auth.login_required({"BIDLOC_UI_REQUIRE_LOGIN": "1"}) and not auth.login_required({})
 
 
-def test_passwd_tool_writes_hash_not_plaintext(tmp_path: Path, capsys):
+def test_passwd_tool_writes_hash_not_plaintext(tmp_path: Path, capsys, real_credentials):
     env = tmp_path / ".env"
     env.write_text("DATA_MODE=real\nBIDLOC_UI_USER=old@x.y\n", encoding="utf-8")
     answers = iter(["correct horse battery", "correct horse battery"])

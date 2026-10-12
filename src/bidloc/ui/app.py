@@ -163,8 +163,11 @@ def notice_list(rows, meta, filters):
     for item in rows[page*page_size:(page+1)*page_size]:
         with st.container(key='notice_row_'+item['key']):
             a,b,c,d,e,f = st.columns(widths,vertical_alignment='center')
-            a.html(f'<div class="notice-title">{html_text(item["bid_ntce_nm"])}</div>'
-                   f'<div class="muted">{html_text(item["bid_ntce_no"])} / {html_text(item["bid_ntce_ord"])} · {html_text(item.get("ntce_instt_nm"))}</div>')
+            url=safe_url(item.get('url'))
+            title=html_text(item["bid_ntce_nm"])
+            a.html((f'<a class="notice-title" href="{url}" target="_blank" rel="noopener" title="원문 열기">{title} ↗</a>' if url
+                    else f'<div class="notice-title">{title}</div>')
+                   +f'<div class="muted">{html_text(item["bid_ntce_no"])} / {html_text(item["bid_ntce_ord"])} · {html_text(item.get("ntce_instt_nm"))}</div>')
             b.html(f'<div class="cell">{html_text(" · ".join(item["regions"]) or "미수집")}</div>')
             c.html(f'<div class="cell money">{money(item.get("presmpt_prce"))}</div>')
             d.html(f'<div class="cell">{html_text(item.get("deadline") or "미수집")}</div>')
@@ -246,6 +249,11 @@ def notice_detail(row, meta):
     st.button('← 검색 결과로 돌아가기',on_click=lambda:st.session_state.update(selected=None))
 
 
+def link_column():
+    """표의 '원문' 열. 값이 URL이면 '열기 ↗'로 보이고 새 탭에서 열린다. 없으면 빈칸."""
+    return {'원문':st.column_config.LinkColumn('원문',display_text='열기 ↗',width='small')}
+
+
 def provider_link(row):
     try:
         parts = urlsplit(row.get('url') or '')
@@ -320,11 +328,11 @@ def provider_section(all_rows, pmeta, filters, meta):
         st.info('조건에 맞는 추가 수집처 공고가 없습니다. 출처·기간·검색어를 조정해 보세요.')
         return
     shown=rows[:500]
-    table=[{'판정':r['evaluation']['overall'],'출처':r['source_label'],'공고명':r['title'],'공고일':r['notice_date'],
+    table=[{'판정':r['evaluation']['overall'],'출처':r['source_label'],'공고명':r['title'],'원문':provider_link(r),'공고일':r['notice_date'],
             '마감':(r['deadline'] or '')[:16].replace('T',' ') or '미제공','참가지역':' · '.join(r['allowed_regions']) if r['allowed_regions']
             else ('표시 없음' if r['allowed_regions']==[] else '미제공'),'현장·소재':r['site_region'] or '미제공',
             '추정가격 (원)':money(r['amount']),'기관':r['agency'],'상태':'취소공고' if r['cancelled'] else (r['progress'] or '')} for r in shown]
-    st.dataframe(table,hide_index=True,width='stretch')
+    st.dataframe(table,hide_index=True,width='stretch',column_config=link_column())
     if len(rows)>len(shown):
         st.caption(f'표에는 앞의 {len(shown):,}건만 보입니다. 전체는 CSV로 받으세요.')
     st.caption('참가지역·현장 위치·담당 본부는 서로 다른 정보입니다. 미제공 값은 0이나 충족으로 보지 않습니다.')
@@ -407,9 +415,11 @@ def recommendation_table(items, key):
         return
     shown=items[:500]
     st.dataframe([{'판정':i['evaluation']['state'],'새 추천':'새 추천' if i.get('is_new') else '','출처':i['source_label'],
-                   '공고명':i['title'],'마감':(i['deadline'] or '')[:16].replace('T',' ') or '미제공',
+                   '공고명':i['title'],'원문':(i['url'] if i['source']=='g2b' else provider_link(i)) or None,
+                   '마감':(i['deadline'] or '')[:16].replace('T',' ') or '미제공',
                    '참가지역':' · '.join(i['allowed_regions'] or []) or '미제공','현장':i['site']['value'] or '미제공',
-                   '추정가격 (원)':money(i['estimated_price']),'기관':i['agency']} for i in shown],hide_index=True,width='stretch')
+                   '추정가격 (원)':money(i['estimated_price']),'기관':i['agency']} for i in shown],
+                 hide_index=True,width='stretch',column_config=link_column())
     if len(items)>len(shown):
         st.caption(f'표에는 앞의 {len(shown):,}건만 보입니다.')
     labels={i['key']:f'[{i["source_label"]}] {i["title"]}' for i in shown}
