@@ -6,12 +6,13 @@
 
 | 실행 위치 | 주소 | 인증 |
 |---|---|---|
+| 인터넷(회사 다른 웹사이트 서버, 2026-10-12부터) | `https://bidmap-api.k-smartroad.com` | 필수: `Authorization: Bearer <BIDLOC_API_TOKEN>` |
 | NAS(`docker compose --profile web`) | `http://<NAS 내부 IP>:8600` | 필수: `Authorization: Bearer <BIDLOC_API_TOKEN>` |
 | PC(`./start-api.ps1`) | `http://127.0.0.1:8600` | 토큰을 설정하지 않으면 없음(이 PC에서만 접속) |
 
 - 토큰은 NAS의 `.env`에 `BIDLOC_API_TOKEN=<길고 임의인 문자열>`로 둔다. 토큰이 틀리거나 없으면 모든 요청이 `401`이다.
 - **웹사이트의 서버에서 호출한다.** 브라우저 자바스크립트에서 직접 부르면 토큰이 노출된다. API는 CORS 헤더도 보내지 않는다.
-- 웹사이트 서버가 NAS 내부망 밖에 있으면 접속 경로(cloudflared 터널과 접근 정책 등)를 따로 정해야 한다. 공유기 포트포워딩으로 열지 않는다. 외부 공개는 별도 결정 사항이다.
+- 인터넷 주소는 Cloudflare 터널 `bidloc`의 공개 경로(`bidmap-api.k-smartroad.com` → `api:8600`)다. 토큰 없는 요청은 401이다. 공유기 포트포워딩은 쓰지 않는다. 연동 안내 페이지: https://claude.ai/artifact/Hxv4UKDioNtL1kHuCQjdfV (비공개 링크, 공유는 대표가 결정).
 
 ## GET /api/v1/recommendations
 

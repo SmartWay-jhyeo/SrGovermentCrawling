@@ -136,6 +136,10 @@ Container Manager 화면으로도 할 수 있다: 프로젝트 → 생성 → �
 
 2026-10-09 실행 기록: 터널 `bidloc`(Healthy, icn 2연결), Access 앱 "면허 입지 분석기 (bidmap)" 정책 Allow·Emails(smartroad2025@gmail.com). 공개 주소를 열면 Cloudflare Access 로그인 화면이 먼저 뜨는 것까지 확인했다. 인증번호 입력 후 화면 로딩은 미검증.
 
+## 4-2. 추천 API 외부 공개 (2026-10-12)
+
+`https://bidmap-api.k-smartroad.com` → 같은 터널 `bidloc`의 두 번째 공개 경로 → `api:8600`. Access는 걸지 않는다(서버 간 호출이라 `BIDLOC_API_TOKEN`으로 막는다. 토큰 없으면 401). API 컨테이너는 `sudo /usr/local/bin/docker compose --profile web up -d api`. 토큰 교체는 `.env`의 `BIDLOC_API_TOKEN`을 바꾸고 `api`를 재시작한다. 호출 쪽 안내는 `docs/API.md`.
+
 ## 5. 운영
 
 - **상태:** `sudo /usr/local/bin/docker compose ps`
