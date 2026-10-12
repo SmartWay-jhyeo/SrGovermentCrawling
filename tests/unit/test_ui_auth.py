@@ -50,6 +50,7 @@ def test_passwd_tool_writes_hash_not_plaintext(tmp_path: Path, capsys):
     text = env.read_text(encoding="utf-8")
     assert "correct horse battery" not in text and text.count("BIDLOC_UI_USER=") == 1
     assert "BIDLOC_UI_USER=a@b.c" in text and "DATA_MODE=real" in text
+    assert "BIDLOC_UI_PASSWORD_HASH='pbkdf2_sha256$" in text  # quoted so docker compose does not expand the `$`
     user, encoded = auth.load_credentials(tmp_path, environ={})
     assert user == "a@b.c" and auth.verify_password("correct horse battery", encoded)
     mismatch = iter(["correct horse battery", "different"])

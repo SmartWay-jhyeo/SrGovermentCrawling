@@ -18,16 +18,22 @@ def upsert_env(path: Path, values: dict[str, str]) -> None:
     lines = path.read_text(encoding="utf-8").splitlines() if path.is_file() else []
     seen: set[str] = set()
     out: list[str] = []
+    # 해시에는 `$`가 들어 있어 docker compose가 변수로 오해한다. 작은따옴표로 감싸면 compose와 python-dotenv 모두
+    # 그대로 읽는다.
+    def render(key: str) -> str:
+        value = values[key]
+        return f"{key}='{value}'" if "$" in value else f"{key}={value}"
+
     for line in lines:
         key = line.split("=", 1)[0].strip() if "=" in line and not line.lstrip().startswith("#") else None
         if key in values:
-            out.append(f"{key}={values[key]}")
+            out.append(render(key))
             seen.add(key)
         else:
             out.append(line)
-    for key, value in values.items():
+    for key in values:
         if key not in seen:
-            out.append(f"{key}={value}")
+            out.append(render(key))
     path.write_text("\n".join(out) + "\n", encoding="utf-8")
 
 
