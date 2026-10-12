@@ -42,7 +42,7 @@ DEFAULTS: dict[str, str] = {
 }
 
 # 배포 전용 키. 설정 로더는 읽지 않고 docker-compose(.env)와 bidloc.api가 직접 읽는다. 모르는 키 경고에서 제외한다.
-DEPLOY_ONLY_KEYS = frozenset({"BIDLOC_API_TOKEN", "TUNNEL_TOKEN"})
+DEPLOY_ONLY_KEYS = frozenset({"BIDLOC_API_TOKEN", "TUNNEL_TOKEN", "BIDLOC_UI_USER", "BIDLOC_UI_PASSWORD_HASH"})
 KNOWN_KEYS = frozenset({KEY_ENV, PROVIDER_KEY_ENV, *DEFAULTS.keys(), *DEPLOY_ONLY_KEYS})
 _ENCODED_KEY_RE = re.compile(r"^[A-Za-z0-9._~%-]+$")
 _PERCENT_RE = re.compile(r"%[0-9A-Fa-f]{2}")

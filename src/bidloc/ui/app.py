@@ -22,6 +22,7 @@ from bidloc.timeutil import now_kst
 from bidloc.query_service import (SearchFilters, csv_bytes, detail, export_metadata,
                                  load_snapshot, notice_export_rows, review_reasons, search)
 from bidloc.ui.cache import fingerprint, read_snapshot
+from bidloc.ui.auth import logout_button, require_login
 
 MENU = [('조건 검색', ':material/dashboard:'), ('공고 검색', ':material/manage_search:'), ('지역 비교', ':material/bar_chart:'),
         ('단가계약 분석', ':material/description:'), ('검토 대기', ':material/schedule:'),
@@ -77,6 +78,7 @@ def sidebar():
         st.divider()
         st.selectbox('회사 프로필', PROFILE, key='profile')
         st.caption('선택값은 분석 가정입니다.\n\n실적·주력분야·본점 기준일은 별도 확인합니다.')
+        logout_button()
 
 
 def reset_filters(defaults):
@@ -595,6 +597,7 @@ def quality_page(meta, pmeta=None):
 def main():
     st.set_page_config(page_title='면허 입지 분석기',page_icon='📋',layout='wide')
     st.html('<style>'+Path(__file__).with_name('style.css').read_text(encoding='utf-8')+'</style>')
+    require_login()
     st.session_state.setdefault('page','조건 검색')
     st.session_state.setdefault('selected',None)
     st.session_state.setdefault('profile','미확정')

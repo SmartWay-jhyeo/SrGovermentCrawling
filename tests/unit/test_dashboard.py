@@ -95,6 +95,7 @@ def test_dashboard_saves_profile_and_shows_scoped_recommendations(monkeypatch, t
     monkeypatch.setattr(ui, "load_settings", lambda: SimpleNamespace(database_path=tmp_path / "synthetic.sqlite3",
                                                                       data_mode="synthetic"))
     monkeypatch.setattr(ui, "cached_snapshot", lambda *args: (g2b, meta))
+    monkeypatch.setattr(ui, "require_login", lambda: None)
     at = AppTest.from_file(str(Path(__file__).resolve().parents[2] / "app.py"), default_timeout=30).run()
     assert not at.exception and at.title[0].value == "조건 검색" and not at.metric
     at.text_input(key="profile_region").set_value("남양주")

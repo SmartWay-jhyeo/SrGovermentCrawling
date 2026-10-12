@@ -43,6 +43,8 @@ services:
     environment:
       TZ: Asia/Seoul
       PYTHONIOENCODING: utf-8
+      # .env에 BIDLOC_UI_USER·BIDLOC_UI_PASSWORD_HASH가 없으면 화면을 열지 않는다(공개 주소로 나가므로).
+      BIDLOC_UI_REQUIRE_LOGIN: "1"
     # 화면에는 로그인 기능이 없다. 이 포트는 NAS의 내부망에서만 쓰고 외부(공유기·터널)로 열지 않는다.
     ports:
       - "8501:8501"

@@ -110,7 +110,13 @@ Container Manager 화면으로도 할 수 있다: 프로젝트 → 생성 → �
 3. 접속 주소:
    - 화면: `http://192.168.0.18:8501`
    - API: `http://192.168.0.18:8600/api/v1/recommendations?region=남양주&license=4992`, 헤더 `Authorization: Bearer <토큰>`
-4. **화면에는 로그인이 없다.** 공유기 포트포워딩으로 열지 않고, 시공노트의 터널에도 얹지 않는다. 외부에서 봐야 하면 아래 "외부 공개" 절차대로 전용 터널 + Cloudflare Access(이메일 로그인 제한)를 쓴다.
+4. **화면 로그인(아이디·비밀번호).** `.env`에 `BIDLOC_UI_USER`와 `BIDLOC_UI_PASSWORD_HASH`가 있으면 화면이 로그인 화면을 먼저 보여 준다. 값은 PC에서 아래 명령으로 만들고(비밀번호는 화면에 보이지 않게 두 번 입력, 해시만 저장) `.env`를 NAS로 복사한 뒤 `ui`를 재시작한다.
+   ```powershell
+   .venv\Scripts\python -m bidloc.ui.passwd --user smartroad2025@gmail.com --write .env
+   scp -O -i ~/.ssh/id_ed25519 .env jhyeo@192.168.0.18:/volume1/web_bidloc/.env
+   ```
+   NAS compose는 `BIDLOC_UI_REQUIRE_LOGIN=1`이라 두 값이 없으면 화면을 열지 않는다. 비밀번호를 바꾸려면 같은 명령을 다시 실행한다. 로그인 실패 5회면 그 브라우저에서 60초 잠긴다. 로그인 상태는 브라우저 탭 세션에만 남아 새로고침하면 다시 로그인한다.
+   공유기 포트포워딩으로 열지 않고, 시공노트의 터널에도 얹지 않는다. 외부 공개는 아래 "외부 공개" 절차(전용 터널)를 쓴다.
 5. 첫 화면은 나라장터 스냅샷을 만드느라 수 분 걸릴 수 있다(PC 기준 약 4분). 매일 추천 단계가 새벽에 캐시를 다시 만들어 두므로 아침에는 빠르다.
 
 ## 4-1. 외부 공개 (Cloudflare Tunnel + Access)
@@ -119,7 +125,7 @@ Container Manager 화면으로도 할 수 있다: 프로젝트 → 생성 → �
 
 1. Zero Trust 대시보드(one.dash.cloudflare.com) → Networks → Tunnels → Create a tunnel → Cloudflared → 이름 `bidloc`. Docker 탭의 `--token` 뒤 문자열을 `.env`의 `TUNNEL_TOKEN=`에 넣는다(채팅·Git 금지).
 2. 같은 터널의 Public Hostname: Subdomain `bidmap`, Domain `k-smartroad.com`, Service HTTP `ui:8501`.
-3. Access → Applications → Add → Self-hosted. 도메인 `bidmap.k-smartroad.com`, 정책 Allow + Include Emails(허용할 이메일). **이 단계를 빼면 누구나 들어온다.**
+3. (선택) Access → Applications → Add → Self-hosted. 도메인 `bidmap.k-smartroad.com`, 정책 Allow + Include Emails. 2026-10-12부터는 화면 자체의 아이디·비밀번호 로그인(4절)을 쓰므로 Access는 필수가 아니다. **둘 다 없으면 누구나 들어온다.**
 4. NAS:
    ```sh
    cd /volume1/web_bidloc
