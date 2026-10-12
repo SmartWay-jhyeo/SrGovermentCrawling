@@ -1,5 +1,19 @@
 # 진행 상태
 
+## 2026-10-12 — NAS 운영 상태 확인, LH 0건 응답 처리
+
+- **완료:**
+  - NAS(192.168.0.18, `/volume1/web_bidloc`) 배포 상태를 SSH로 확인했다. 10/9 배포 후 자동 일일 실행이 10/10·10/11·10/12 00:12에 돌았고 매일 추천 파일이 기록됐다. collector·ui·tunnel 컨테이너 Up 2일, 시공노트 컨테이너 전부 정상.
+  - 화면을 `https://bidmap.k-smartroad.com`으로 공개했다(10/9). Cloudflare 터널 `bidloc` + Access 이메일 로그인(smartroad2025@gmail.com 1명). 상세는 [NAS 배포 안내 4-1절](NAS_DEPLOY.md).
+  - 이 PC에서 `origin/main`(누리장터·남부발전 커밋 3개)을 받아 NAS 쪽 커밋 위에 재배치했다. 테스트 320 passed.
+  - `.env.example`의 배포 전용 키(`BIDLOC_API_TOKEN`, `TUNNEL_TOKEN`)를 설정 로더의 알려진 키에 등록했다(테스트 `test_env_example_keys_are_known` 복구).
+  - LH가 범위에 입찰이 없으면 `resultCode 03 NODATA_ERROR`를 본문 없이 돌려준다(원본: NAS `.local/real/raw/2026-10-12/lh/`, 203바이트). 수집기는 이를 "missing items or totalCount"로 REVIEW_REQUIRED 처리해 10/11·10/12 provider-collect가 exit=1이었다. 첫 페이지·미수신 작업에서만 0건 완료로 처리하도록 고쳤다(`provider_collect.py`). 뒤 페이지의 같은 응답은 여전히 검토 대상이다.
+- **실패:** 없음. 10/11·10/12 NAS 실행의 exit=1은 위 LH 0건 건이며 다른 수집처(kapt·kwater·d2b)와 나라장터 스윕은 exit=0.
+- **미검증:**
+  - NAS에는 이 PC의 새 커밋(누리장터·남부발전 포함)이 아직 반영되지 않았다. NAS는 `0491ab7`이고 `docker-compose.yml`만 터널 설정으로 수정돼 있다.
+  - bidmap 주소의 인증번호 입력 뒤 화면 로딩은 사용자 확인 대기.
+- **다음 조치:** 푸시 → NAS에서 `git checkout -- docker-compose.yml && git pull` → `sudo /usr/local/bin/docker compose build` → `up -d` + `--profile web --profile public up -d ui tunnel` → 다음 날 00:12 로그에서 LH `COMPLETE_RANGE 0 / 0`과 누리장터·남부발전 단계 확인.
+
 ## 2026-10-12 — 누리장터·남부발전 연결, 중부발전 보류
 
 - **완료:**
