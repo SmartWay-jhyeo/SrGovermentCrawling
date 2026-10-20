@@ -1,4 +1,4 @@
-"""Read-only view of staged provider notices (K-apt, LH, K-water, D2B, 누리장터, 남부발전) for the search screen.
+"""Read-only view of staged provider notices (K-apt, LH, K-water, D2B, 누리장터, 남부발전, 한전) for the search screen.
 
 Each provider keeps its own meaning. Participation regions, site location and the agency office stay
 in separate fields, every amount keeps its own label, and a condition a provider does not publish is
@@ -12,13 +12,14 @@ import sqlite3
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 from bidloc.analysis import parse_datetime, region_matches
 from bidloc.provider_probe import DETAIL_KEYS
 from bidloc.timeutil import KST, now_kst
 
 SOURCE_LABELS = {"kapt": "K-apt 공동주택", "lh": "LH", "kwater": "K-water", "d2b": "국방조달(D2B)",
-                 "nuri": "누리장터(민간)", "kospo": "남부발전"}
+                 "nuri": "누리장터(민간)", "kospo": "남부발전", "kepco": "한전"}
 # K-apt bidArea is documented as the 법정동 시·도 code; old and new province codes map to current names.
 SIDO_CODES = {"11": "서울특별시", "26": "부산광역시", "27": "대구광역시", "28": "인천광역시", "29": "광주광역시",
               "30": "대전광역시", "31": "울산광역시", "36": "세종특별자치시", "41": "경기도", "42": "강원특별자치도",
@@ -41,9 +42,35 @@ KAPT_KIND = {"1": "신규공고", "2": "수정공고", "3": "재공고"}
 KAPT_CONTRACT = {"01": "일반경쟁", "02": "제한경쟁", "03": "지명경쟁"}
 # Observed only: the K-apt Swagger says "코드정의서 참조" and no code table is published.
 KAPT_BUSINESS = {"01": "용역", "02": "공사", "03": "용역", "04": "물품", "05": "기타"}
-LINK_HOSTS = {"www.k-apt.go.kr", "www.g2b.go.kr"}
+LINK_HOSTS = {"www.k-apt.go.kr", "www.g2b.go.kr", "srm.kepco.net"}
 # Providers that publish no licence or participation-region data at all.
-NO_CONDITION_SOURCES = {"kapt", "kwater", "kospo"}
+NO_CONDITION_SOURCES = {"kapt", "kwater", "kospo", "kepco"}
+# 한전 전자입찰 계약정보 companyId (portal API guide, 2026-10-20). COM04 한국남부발전 is skipped: the 남부발전 source
+# (kospo) already lists those notices.
+KEPCO_COMPANIES = {"COM01": "한국전력공사", "COM02": "한국서부발전(주)", "COM03": "한국전력국제원자력대학원대학교",
+                   "COM04": "한국남부발전(주)", "COM05": "한국중부발전(주)", "COM06": "한국남동발전(주)",
+                   "COM08": "한국동서발전(주)", "COM09": "한국전력기술(주)", "COM10": "한전KPS(주)", "COM11": "한국전력거래소",
+                   "COM12": "한국원자력연료(주)", "COM14": "한국발전교육원", "COM16": "한국해상풍력(주)", "COM19": "KAPES주식회사"}
+KEPCO_SKIPPED_COMPANIES = {"COM04"}
+# Ordering offices (placeName) seen in the 2026-10-06..19 answer whose area is a single province or plant site.
+# Used only to narrow the site scope of notices that carry no location, labelled as an estimate; it never decides
+# eligibility. Offices covering several provinces (대전세종충남·광주전남·대구·부산울산본부) and nationwide
+# construction offices (중부·남부·경인·HVDC건설본부) are left out on purpose.
+KEPCO_OFFICES = {"서울본부": "서울특별시", "남서울본부": "서울특별시", "경기본부": "경기도", "경기북부본부": "경기도",
+                 "인천본부": "인천광역시", "강원본부": "강원특별자치도", "충북본부": "충청북도", "전북본부": "전북특별자치도",
+                 "경북본부": "경상북도", "경남본부": "경상남도", "제주본부": "제주특별자치도",
+                 "당진발전본부": "충청남도 당진시", "태안발전본부": "충청남도 태안군", "영흥발전본부": "인천광역시 옹진군",
+                 "일산발전본부": "경기도 고양시", "세종발전본부": "세종특별자치시", "제주발전본부": "제주특별자치도",
+                 "울산발전본부": "울산광역시", "삼천포발전본부": "경상남도 사천시", "신보령발전본부": "충청남도 보령시",
+                 "영동에코발전본부": "강원특별자치도 강릉시", "신서천발전본부": "충청남도 서천군"}
+# Regional offices covering several provinces. The site is one of them; a notice is out of a scope only when every
+# one of them is (recommend.outside_site_scope). 대구본부 also covers 경상북도 (e.g. 포항 죽장 work, 2026-10).
+KEPCO_OFFICE_AREAS = {"대전세종충남본부": ("대전광역시", "세종특별자치시", "충청남도"), "광주전남본부": ("광주광역시", "전라남도"),
+                      "대구본부": ("대구광역시", "경상북도"), "부산울산본부": ("부산광역시", "울산광역시", "경상남도")}
+KEPCO_BUSINESS = {"Construction": "공사", "Service": "용역", "Product": "물품"}
+KEPCO_CONTRACT = {"Open": "일반경쟁", "Destination": "지명경쟁", "Limited": "제한경쟁", "Private": "수의"}
+KEPCO_AWARD = {"LimitedLowestPrice": "제한적최저가", "LowestPrice": "최저가", "QualifiedEval": "적격심사",
+               "CollectivelyBid": "일괄입찰", "Nego": "협상", "TotalEvalSuccess": "종합심사낙찰제"}
 # 누리장터 licence-limit and participation-region lists cover every business type; they join construction
 # notices by (bidNtceNo, bidNtceOrd).
 NURI_AUX = ("nuri_lcns", "nuri_rgn")
@@ -322,6 +349,63 @@ def kospo_row(item, *meta):
     return row
 
 
+def kepco_link(item):
+    """The attachment named as the notice (else the first), on the SRM host and over https; others are not linked."""
+    files = []
+    for n in range(1, 6):
+        link, name = clean(item.get(f"filenlink{n}")), clean(item.get(f"filename{n}")) or ""
+        parts = urlsplit(link or "")
+        if parts.scheme in ("http", "https") and parts.hostname == "srm.kepco.net" and not parts.username:
+            files.append((urlunsplit(("https",) + tuple(parts)[1:]), name))
+    chosen = next((f for f in files if "공고" in f[1]), files[0] if files else None)
+    if not chosen:
+        return None, None
+    return chosen[0], "공고문 첨부" if "공고" in chosen[1] else "첨부 파일"
+
+
+def kepco_row(item, *meta):
+    row = base_row("kepco", (clean(item.get("no")) or "",), *meta)
+    company = clean(item.get("companyId")) or ""
+    etc = clean(item.get("etc"))
+    url, url_label = kepco_link(item)
+    contract = " · ".join(x for x in (KEPCO_CONTRACT.get(clean(item.get("competitionType")) or "", clean(item.get("competitionType"))),
+                                       KEPCO_AWARD.get(clean(item.get("bidType")) or "", clean(item.get("bidType")))) if x)
+    row.update(notice_no=clean(item.get("no")), title=clean(item.get("name")),
+               agency=KEPCO_COMPANIES.get(company, f"한전 계열({company or '회사코드 없음'})"),
+               business=KEPCO_BUSINESS.get(clean(item.get("itemType")) or "", "미분류"),
+               business_basis="도급구분(itemType)", notice_date=iso_date(item.get("noticeDate")),
+               deadline=iso_datetime(item.get("bidAttendReqCloseDatetime")),
+               deadline_label="입찰참가신청 마감(투찰 마감은 별도)",
+               amount=to_int(item.get("presumedPrice")),
+               amounts={"추정가격": to_int(item.get("presumedPrice")), "추정금액": to_int(item.get("presumedAmount")),
+                        "예비가격기초금액": to_int(item.get("estimatedPriceBasicAmount"))},
+               office=clean(item.get("placeName")), license_text=None if etc in (None, "-") else etc,
+               contract=contract or None, progress=clean(item.get("progressState")), url=url, url_label=url_label)
+    row["license_basis"] = "면허 정보 미제공(입찰참가자격 문장·공고문 확인)"
+    row["allowed_regions_basis"] = "참가지역 정보 미제공(공고문 확인)"
+    office = (row["office"] or "").split()
+    estimate = KEPCO_OFFICES.get(office[0]) if office else None
+    areas = KEPCO_OFFICE_AREAS.get(office[0]) if office else None
+    if areas:
+        estimate = "·".join(areas) + " 중 한 곳"
+        row["site_provinces"] = list(areas)
+    row["site_region"] = estimate
+    row["site_region_label"] = ("발주 본부로 추정한 위치(공식 현장 정보 아님)" if estimate
+                                else "현장 위치 정보 없음(발주기관은 현장이 아님)")
+    if clean(item.get("emergencyNoticeYn")) == "1":
+        row["flags"].append("긴급공고")
+    if clean(item.get("jointSupplyDemandYn")) == "1":
+        row["flags"].append("공동수급 공고")
+    return row
+
+
+def shortlist_candidate(row):
+    """Title words, or for 한전 also the 입찰참가자격 sentence naming 4992 work (no licence field exists there)."""
+    if title_candidate(row["title"]):
+        return True
+    return row["source"] == "kepco" and any(term in (row["license_text"] or "") for term in LICENSE_4992_TERMS)
+
+
 def version_rank(row, item):
     if row["source"] == "lh":
         return to_int(item.get("bidDegree")) or 0
@@ -329,6 +413,9 @@ def version_rank(row, item):
         return to_int(item.get("pblancOdr")) or 0
     if row["source"] == "nuri":
         return to_int(item.get("bidNtceOrd")) or 0
+    if row["source"] == "kepco":
+        # The same number came twice with new dates and files (a relisting); the later registration is current.
+        return to_int(re.sub(r"\D", "", clean(item.get("createDatetime")) or "")) or 0
     return 0
 
 
@@ -395,6 +482,10 @@ def load_provider_notices(path):
                            *meta_args)
         elif provider == "kospo":
             row = kospo_row(item, *meta_args)
+        elif provider == "kepco":
+            if (clean(item.get("companyId")) or "") in KEPCO_SKIPPED_COMPANIES:
+                continue
+            row = kepco_row(item, *meta_args)
         else:
             continue
         rank = version_rank(row, item)
@@ -479,7 +570,7 @@ def search_provider_notices(rows, filters, *, sources=None, include_unmatched=Fa
             if evaluation["license"] == "불충족" and not include_unmatched:
                 held_back["요구 면허에 4992 없음"] += 1
                 continue
-            if row["source"] in NO_CONDITION_SOURCES and title_shortlist and not title_candidate(row["title"]):
+            if row["source"] in NO_CONDITION_SOURCES and title_shortlist and not shortlist_candidate(row):
                 held_back["면허 정보 없는 출처 · 제목 후보 아님"] += 1
                 continue
             # 누리장터 notices whose licence limits are absent or not yet collected get the same title shortlist.

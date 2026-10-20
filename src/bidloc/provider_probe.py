@@ -14,7 +14,7 @@ from typing import Any
 from bidloc.catalog import load_catalog
 from bidloc.clients.budget import OperationBudget
 from bidloc.clients.http import DataGoKrClient, evaluate_live_gate
-from bidloc.config import PROVIDER_KEY_ENV, Settings, load_settings
+from bidloc.config import KEPCO_KEY_ENV, PROVIDER_KEY_ENV, Settings, load_settings
 from bidloc.redaction import redact
 from bidloc.repositories.db import default_migrations_dir, open_database
 from bidloc.repositories.raw_store import ResponseRecorder
@@ -37,7 +37,11 @@ OPERATIONS = {
     "nuri_rgn": "getPrvtBidPblancListInfoPrtcptPsblRgn",
     "kospo": "getDataService",
     "komipo": "getData",
+    # 한전 전력데이터 개방포털(별도 호스트·키). 한전과 발전자회사 공고가 함께 온다.
+    "kepco": "electContract",
 }
+# Providers that answer a whole date range at once and take no pageNo/numOfRows.
+SINGLE_PAGE_PROVIDERS = frozenset({"kepco"})
 G2B_PROVIDERS = frozenset({"bid_notice", "bid_notice_reg", "bid_notice_etc"})
 NURI_PROVIDERS = frozenset({"nuri", "nuri_lcns", "nuri_rgn"})
 # Services the user approved on the provider account: kapt/lh/kwater first, then d2b/pps_openstd (2026-10-08)
@@ -47,7 +51,7 @@ DATE_FIELDS = {"bid_notice": "bidNtceDt", "bid_notice_reg": "rgstDt", "bid_notic
                "kapt": "bidRegDate", "lh": "tndrbidRegDt", "kwater": "tndrPblancDe", "d2b": "pblancDate",
                "pps_openstd": "bidNtceDate", "nuri": "rgstDt", "nuri_lcns": "rgstDt", "nuri_rgn": "rgstDt",
                # 남부발전 publishes 공고일자 only in the construction group (suffix 3); 중부발전 uses 공고일시.
-               "kospo": "annday3", "komipo": "bidStart"}
+               "kospo": "annday3", "komipo": "bidStart", "kepco": "noticeDate"}
 # Categorical fields that separate source system, notice version and business type.
 VALUE_COUNT_FIELDS = {**{p: ("rgstTyNm", "ntceKindNm") for p in G2B_PROVIDERS},
                       "d2b": ("busiDivs", "pblancSe", "cntrctMth"),
@@ -70,6 +74,9 @@ def service_id(provider: str) -> str:
 def settings_for_provider(settings: Settings, provider: str) -> Settings:
     if provider in G2B_PROVIDERS:
         return settings
+    if provider == "kepco":
+        # Only the KEPCO portal key goes to the KEPCO host; no data.go.kr key falls back here.
+        return replace(settings, service_key=settings.kepco_api_key, service_key_format="decoded")
     if provider not in PROVIDER_ACCOUNT:
         raise ValueError("unsupported provider")
     # Missing credentials must not fall back to the unrelated G2B credential.
@@ -77,9 +84,22 @@ def settings_for_provider(settings: Settings, provider: str) -> Settings:
                    service_key_format=settings.provider_service_key_format)
 
 
+def key_reason(provider: str, reason: str) -> str:
+    """Gate reasons name the G2B key; say which credential this provider actually needs."""
+    if provider in G2B_PROVIDERS:
+        return reason
+    return reason.replace("DATA_GO_KR_SERVICE_KEY", KEPCO_KEY_ENV if provider == "kepco" else PROVIDER_KEY_ENV)
+
+
 def query_params(provider: str, begin: date, end: date, page: int = 1, rows: int = 5) -> dict[str, str]:
     if begin > end:
         raise ValueError("begin must not exceed end")
+    if provider == "kepco":
+        # Guide: YYYYMMDD bounds, at most 90 days (a longer range answers errCd 400). No paging parameters.
+        if (end - begin).days >= 90:
+            raise ValueError("kepco range must stay within 90 days")
+        return {"noticeBeginDate": begin.strftime("%Y%m%d"), "noticeEndDate": end.strftime("%Y%m%d"),
+                "returnType": "json"}
     params = {"pageNo": str(page), "numOfRows": str(rows)}
     if provider in G2B_PROVIDERS:
         # inqryDiv=1 is 공고게시일시 for PPSSrch and 등록일시 for the plain list operation.
@@ -203,6 +223,8 @@ def probe_provider(client: Any, budget: Any, provider: str, begin: date, end: da
             first_items = list(result.items or [])
         if result.outcome.value == "QUOTA_DAILY_EXCEEDED":
             budget.mark_quota_exhausted(service_id(provider), OPERATIONS[provider])
+        if provider in SINGLE_PAGE_PROVIDERS:
+            break
         if not result.data_ok or not result.items or result.total_count is None or result.total_count <= rows:
             break
     repeated = len(pages) == 2 and bool(pages[0]["sample_sha256"]) and pages[0]["sample_sha256"] == pages[1]["sample_sha256"]
@@ -236,8 +258,7 @@ def main(argv: list[str] | None = None) -> int:
     if not 1 <= args.rows <= 999:
         parser.error("rows must be between 1 and 999")
     gates = {p: evaluate_live_gate(settings_for_provider(settings, p), args.live) for p in providers}
-    blocked = {p: [reason.replace("DATA_GO_KR_SERVICE_KEY", PROVIDER_KEY_ENV) if p not in G2B_PROVIDERS else reason
-                   for reason in gate.reasons] for p, gate in gates.items() if not gate.allowed}
+    blocked = {p: [key_reason(p, reason) for reason in gate.reasons] for p, gate in gates.items() if not gate.allowed}
     if blocked:
         print(json.dumps({"status": "BLOCKED", "providers": blocked, "http_calls": 0}, ensure_ascii=False))
         return 2
@@ -260,7 +281,7 @@ def main(argv: list[str] | None = None) -> int:
     run_id = new_run_id("provider-probe")
     report: dict[str, Any] = {"run_id": run_id, "checked_at_kst": now_kst().isoformat(),
         "begin": begin.isoformat(), "end": end.isoformat(), "rows": args.rows, "catalog_sha256": catalog.sha256,
-        "providers": {}, "kepco": {"status": "SKIPPED", "reason": "KEPCO adapter not implemented; separate portal credential and endpoint verification required"}}
+        "providers": {}}
     runs.start(run_id=run_id, command="provider-probe", data_mode="real", live=True,
                status="RUNNING", max_calls_run=budget.max_per_run, catalog_sha256=catalog.sha256)
     status = "PARTIAL"

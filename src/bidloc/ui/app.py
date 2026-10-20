@@ -527,7 +527,7 @@ def api_page():
         st.table([{'이름':n,'설명':d} for n,d in [
             ('region','본점 소재지. 남양주 / 남양주시 / 경기도 남양주시 (필수)'),
             ('license','면허. 4992 또는 도장습식방수 (현재 4992만 검증)'),
-            ('sources','g2b,kapt,lh,kwater,d2b,nuri,kospo 중 선택 (기본 전체)'),
+            ('sources','g2b,kapt,lh,kwater,d2b,nuri,kospo,kepco 중 선택 (기본 전체)'),
             ('keyword','공고명·번호·기관 검색어'),('min_amount / max_amount','추정가격 범위(원). 추정가격 없는 공고는 제외하고 건수로 표시'),
             ('include_unknown','false면 조건 일치만 (기본 true)'),
             ('title_shortlist','면허 정보 없는 공고(K-apt·K-water·남부발전, 면허제한 목록이 없는 누리장터)를 방수·도장 등 제목 후보로 좁힘 (기본 true)'),

@@ -33,7 +33,8 @@ NOTES = ["조건 일치도 참가자격 확정이 아닙니다. 주력분야·�
          "확인 필요는 출처가 면허·참가지역을 주지 않았거나 자료가 비어 있다는 뜻이며 참가 가능을 뜻하지 않습니다.",
          "참가지역 정보가 없는 공고는 기본적으로 현장 시·도가 본점과 같은 것만 보여줍니다(site_provinces). 자격 판정이 아니라 추천 범위입니다.",
          "같은 공고의 여러 차수는 최신 차수 하나로 보여줍니다. 출처 간 같은 사업의 중복은 합치지 않았습니다.",
-         "누리장터는 추정가격 대신 배정예산·기준금액을, 남부발전은 라벨이 불명확한 금액 표기값을 따로 보여줍니다. 둘 다 추정가격 범위 조건에서는 빠집니다."]
+         "누리장터는 추정가격 대신 배정예산·기준금액을, 남부발전은 라벨이 불명확한 금액 표기값을 따로 보여줍니다. 둘 다 추정가격 범위 조건에서는 빠집니다.",
+         "한전은 면허·참가지역을 주지 않아 공고명이나 입찰참가자격 문장에 4992 업종어가 있는 공사만 확인 필요로 보여줍니다. 남부발전 공고는 남부발전 출처로만 보여줍니다."]
 
 
 def iso_kst(value):
@@ -120,7 +121,8 @@ def provider_items(rows, hq, now, *, sources, keyword="", min_amount=None, max_a
             "notice_no": r["notice_no"], "version": r["version"], "agency": r["agency"], "demand_agency": None,
             "notice_date": r["notice_date"], "deadline": iso_kst(r["deadline"]), "deadline_label": r["deadline_label"],
             "estimated_price": r["amount"], "amounts": r["amounts"], "allowed_regions": r["allowed_regions"] or None,
-            "site": {"value": r["site_region"], "kind": r["site_region_label"]},
+            "site": {"value": r["site_region"], "kind": r["site_region_label"],
+                     **({"provinces": r["site_provinces"]} if r.get("site_provinces") else {})},
             "license_requirements": r["licenses"] or None, "contract": r["contract"],
             "evaluation": {"state": ev["overall"], "license": ev["license"], "license_basis": ev["license_basis"],
                            "region": ev["region"], "region_basis": ev["region_basis"] or r["allowed_regions_basis"]},
@@ -146,10 +148,13 @@ def resolve_site_provinces(value, hq):
     return set(names)
 
 
-def outside_site_scope(site, region_state, provinces):
-    """True only for a notice without participation-region data whose readable site province is out of scope."""
+def outside_site_scope(site, region_state, provinces, candidates=None):
+    """True only for a notice without participation-region data whose readable site province is out of scope.
+    `candidates` is a set of possible site provinces (an office covering several); all must be out of scope."""
     if provinces is None or region_state != "확인 필요":
         return False
+    if candidates:
+        return all(c not in provinces for c in candidates)
     text = canonical_region(site)
     province = text.split()[0] if text and text.split()[0] in PROVINCES else None
     # An unreadable or missing site is kept: the scope cannot be judged without it.
@@ -193,7 +198,8 @@ def recommend(g2b_records, provider_rows, *, region, license="4992", sources=Non
     # Only where the participation region is unknown: a far-away site is a scope choice, not an eligibility result.
     kept = []
     for i in items:
-        if outside_site_scope((i.get("site") or {}).get("value"), i["evaluation"]["region"], provinces):
+        site = i.get("site") or {}
+        if outside_site_scope(site.get("value"), i["evaluation"]["region"], provinces, site.get("provinces")):
             held["참가지역 정보 없음 · 현장 시·도 범위 밖"] += 1
             continue
         kept.append(i)

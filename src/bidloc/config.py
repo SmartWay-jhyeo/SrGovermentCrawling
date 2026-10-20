@@ -18,6 +18,8 @@ from bidloc.redaction import REGISTRY, SecretValue
 
 KEY_ENV = "DATA_GO_KR_SERVICE_KEY"
 PROVIDER_KEY_ENV = "PROVIDER_DATA_GO_KR_SERVICE_KEY"
+# 한전 전력데이터 개방포털(bigdata.kepco.co.kr) 인증키. data.go.kr 키와 별개이며 서로 대신 쓰지 않는다.
+KEPCO_KEY_ENV = "KEPCO_API_KEY"
 
 DEFAULTS: dict[str, str] = {
     "DATA_GO_KR_SERVICE_KEY_FORMAT": "decoded",
@@ -43,7 +45,7 @@ DEFAULTS: dict[str, str] = {
 
 # 배포 전용 키. 설정 로더는 읽지 않고 docker-compose(.env)와 bidloc.api가 직접 읽는다. 모르는 키 경고에서 제외한다.
 DEPLOY_ONLY_KEYS = frozenset({"BIDLOC_API_TOKEN", "TUNNEL_TOKEN", "BIDLOC_UI_USER", "BIDLOC_UI_PASSWORD_HASH"})
-KNOWN_KEYS = frozenset({KEY_ENV, PROVIDER_KEY_ENV, *DEFAULTS.keys(), *DEPLOY_ONLY_KEYS})
+KNOWN_KEYS = frozenset({KEY_ENV, PROVIDER_KEY_ENV, KEPCO_KEY_ENV, *DEFAULTS.keys(), *DEPLOY_ONLY_KEYS})
 _ENCODED_KEY_RE = re.compile(r"^[A-Za-z0-9._~%-]+$")
 _PERCENT_RE = re.compile(r"%[0-9A-Fa-f]{2}")
 _LOOPBACK = {"127.0.0.1", "localhost", "::1"}
@@ -82,6 +84,7 @@ class Settings:
     unknown_env_file_keys: tuple[str, ...] = ()
     provider_service_key: SecretValue | None = None
     provider_service_key_format: str = "decoded"
+    kepco_api_key: SecretValue | None = None
 
     @property
     def service_key_present(self) -> bool:
@@ -93,6 +96,7 @@ class Settings:
         return [
             (KEY_ENV, "설정됨" if self.service_key else "미설정", src.get(KEY_ENV, "-")),
             (PROVIDER_KEY_ENV, "설정됨" if self.provider_service_key else "미설정", src.get(PROVIDER_KEY_ENV, "-")),
+            (KEPCO_KEY_ENV, "설정됨" if self.kepco_api_key else "미설정", src.get(KEPCO_KEY_ENV, "-")),
             ("DATA_GO_KR_SERVICE_KEY_FORMAT", self.service_key_format, src.get("DATA_GO_KR_SERVICE_KEY_FORMAT", "default")),
             ("ALLOW_LIVE_API", str(self.allow_live_api).lower(), src.get("ALLOW_LIVE_API", "default")),
             ("LIVE_MAX_CALLS_PER_RUN", str(self.live_max_calls_per_run), src.get("LIVE_MAX_CALLS_PER_RUN", "default")),
@@ -217,6 +221,15 @@ def load_settings(
         if register_secret:
             REGISTRY.register(provider_key)
 
+    kepco_raw = get(KEPCO_KEY_ENV).strip()
+    kepco_key = None
+    if kepco_raw:
+        if any(ch.isspace() for ch in kepco_raw):
+            raise ConfigError(f"{KEPCO_KEY_ENV}에 공백 문자가 포함되어 있다 (값은 표시하지 않음)")
+        kepco_key = SecretValue(kepco_raw)
+        if register_secret:
+            REGISTRY.register(kepco_key)
+
     allow_live = _parse_bool("ALLOW_LIVE_API", get("ALLOW_LIVE_API"))
     max_run = _parse_int("LIVE_MAX_CALLS_PER_RUN", get("LIVE_MAX_CALLS_PER_RUN"), minimum=0, maximum=100_000)
     max_day = _parse_int("LIVE_MAX_CALLS_PER_DAY", get("LIVE_MAX_CALLS_PER_DAY"), minimum=0, maximum=1_000_000)
@@ -294,4 +307,5 @@ def load_settings(
         unknown_env_file_keys=unknown,
         provider_service_key=provider_key,
         provider_service_key_format=provider_format,
+        kepco_api_key=kepco_key,
     )

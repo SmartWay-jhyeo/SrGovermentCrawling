@@ -144,6 +144,21 @@ def _parse_json(text: str) -> ParsedBody:
         header = data["OpenAPI_ServiceResponse"].get("cmmMsgHeader") or {}
         return _gateway(fmt="json", header=header if isinstance(header, dict) else {})
 
+    # 한전 전자입찰 계약정보(bigdata.kepco.co.kr)는 resultCode·totalCount 없이 {"data": [...]}만 준다(2026-10-20 실응답).
+    # 정확히 이 형태일 때만 정상 응답으로 읽고, 페이지가 없는 출처라 배열 길이를 건수로 쓴다.
+    if set(data) == {"data"} and isinstance(data["data"], list):
+        parsed = ParsedBody(fmt="json", kind="standard", shape="json:data-list", result_code="00")
+        parsed.items = _json_item_list(data["data"], parsed.problems)
+        parsed.total_count = None if parsed.items is None else len(parsed.items)
+        return parsed
+    # 같은 출처의 오류는 HTTP 401에 {"errCd": "401", "errMsg": "InvalidApiKeyException"} 형태다(기간 초과는 errCd 400).
+    if set(data) == {"errCd", "errMsg"}:
+        parsed = ParsedBody(fmt="json", kind="flat_error", shape="json:errcd")
+        parsed.result_code_raw = None if data["errCd"] is None else str(data["errCd"])
+        parsed.result_code = normalize_result_code(data["errCd"])
+        parsed.result_msg = None if data["errMsg"] is None else str(data["errMsg"])
+        return parsed
+
     root = data.get("response") if isinstance(data.get("response"), dict) else None
     shape_root = "json:response"
     if root is None and ("header" in data or "body" in data):

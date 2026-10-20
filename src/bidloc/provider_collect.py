@@ -18,8 +18,8 @@ from bidloc.clients.budget import OperationBudget
 from bidloc.clients.errors import RUN_FATAL, SERVICE_FATAL
 from bidloc.clients.http import DataGoKrClient, evaluate_live_gate
 from bidloc.config import PROVIDER_KEY_ENV, load_settings
-from bidloc.provider_probe import (DETAIL_KEYS, DETAIL_OPERATIONS, OPERATIONS, query_params, service_id,
-                                   settings_for_provider)
+from bidloc.provider_probe import (DETAIL_KEYS, DETAIL_OPERATIONS, OPERATIONS, SINGLE_PAGE_PROVIDERS, key_reason,
+                                   query_params, service_id, settings_for_provider)
 from bidloc.redaction import redact
 from bidloc.repositories.db import default_migrations_dir, open_database
 from bidloc.repositories.raw_store import ResponseRecorder
@@ -27,7 +27,12 @@ from bidloc.repositories.runs import RunRepository, new_run_id
 from bidloc.timeutil import now_kst
 
 # 누리장터 needs its licence-limit and participation-region lists (nuri_lcns, nuri_rgn) from the same window.
-PROVIDERS = ("kapt", "lh", "kwater", "d2b", "nuri", "nuri_lcns", "nuri_rgn", "kospo")
+# kepco (한전 전력데이터 개방포털) uses its own host and key (KEPCO_API_KEY); without that key it is skipped.
+PROVIDERS = ("kapt", "lh", "kwater", "d2b", "nuri", "nuri_lcns", "nuri_rgn", "kospo", "kepco")
+# Providers read with their own credential, client and budget instead of the data.go.kr provider key.
+OWN_KEY_PROVIDERS = frozenset({"kepco"})
+KEPCO_MAX_CALLS_PER_RUN = 7
+KEPCO_MAX_CALLS_PER_DAY = 20
 
 
 def dump(value):
@@ -70,8 +75,10 @@ def init_store(conn):
 
 
 def collect_provider(client, budget, store, provider, begin, end, rows, contract_sha, snapshot=None):
+    single = provider in SINGLE_PAGE_PROVIDERS
     base = query_params(provider, begin, end)
-    base["numOfRows"] = str(rows)
+    if not single:
+        base["numOfRows"] = str(rows)
     # A changed parser/contract or request creates an independent snapshot. A collection day does too,
     # so a later day re-reads a range (e.g. K-water's month) instead of reusing a completed job.
     identity = {"provider": provider, "params": base, "contract": contract_sha, "version": 1}
@@ -86,7 +93,7 @@ def collect_provider(client, budget, store, provider, begin, end, rows, contract
         if job["status"] in {"COMPLETE_RANGE", "REVIEW_REQUIRED"}:
             return job
         page = job["next_page"]
-        params = {**base, "pageNo": str(page)}
+        params = dict(base) if single else {**base, "pageNo": str(page)}
         result = client.call(service_id(provider), OPERATIONS[provider], params, response_type=None)
         reason = None
         if result.outcome.value == "QUOTA_DAILY_EXCEEDED":
@@ -102,17 +109,21 @@ def collect_provider(client, budget, store, provider, begin, end, rows, contract
             # (rows already received, or a later page) it stays a review case. Seen on the NAS 2026-10-11/12.
             if result.outcome.value == "NO_DATA" and page == 1 and job["received"] == 0 and job["total_count"] is None:
                 items, total = [], 0
+            # A single-page provider answers the whole range at once: its page size is what it returned.
+            size = len(items) if single and items is not None else rows
             if items is None or total is None:
                 reason = "missing items or totalCount"
+            elif single and (page != 1 or total != len(items)):
+                reason = "single-page answer count mismatch"
             elif job["total_count"] is not None and total != job["total_count"]:
                 reason = "totalCount changed; start a new range snapshot after review"
             elif result.page_no is not None and result.page_no != page:
                 reason = "returned page number mismatch"
             elif job["received"] + len(items) > total:
                 reason = "received rows exceed totalCount"
-            elif len(items) < rows and job["received"] + len(items) < total:
+            elif len(items) < size and job["received"] + len(items) < total:
                 reason = "short page before totalCount; page-size contract needs review"
-            elif len(items) > rows:
+            elif len(items) > size:
                 reason = "returned page exceeds requested size"
             elif not result.source_response_ids:
                 reason = "missing raw provenance"
@@ -190,6 +201,9 @@ def daily_windows(today, providers, lookback_days):
                 last_month_end = today.replace(day=1) - timedelta(days=1)
                 windows.append((p, last_month_end.replace(day=1), last_month_end))
             windows.append((p, today.replace(day=1), today))
+        elif p in SINGLE_PAGE_PROVIDERS:
+            # The whole range comes in one answer; one day at a time keeps it under MAX_RESPONSE_BYTES.
+            windows += [(p, today - timedelta(days=n), today - timedelta(days=n)) for n in range(lookback_days - 1, -1, -1)]
         else:
             windows.append((p, today - timedelta(days=lookback_days - 1), today))
     return windows
@@ -220,13 +234,25 @@ def main(argv=None):
     if not 0 <= args.max_details <= 30:
         parser.error("max-details must be 0..30")
     root = Path(__file__).resolve().parents[2]
-    settings = settings_for_provider(load_settings(root), "kapt")
-    settings = replace(settings, retry_max_attempts=1)
+    loaded = load_settings(root)
+    settings = replace(settings_for_provider(loaded, "kapt"), retry_max_attempts=1)
     gate = evaluate_live_gate(settings, args.live)
-    if not gate.allowed:
+    kepco_settings = replace(settings_for_provider(loaded, "kepco"), retry_max_attempts=1)
+    kepco_gate = evaluate_live_gate(kepco_settings, args.live)
+    shared = [p for p in providers if p not in OWN_KEY_PROVIDERS]
+    skipped = {}
+    if shared and not gate.allowed:
         print(dump({"status": "BLOCKED", "http_calls": 0,
                     "reasons": [r.replace("DATA_GO_KR_SERVICE_KEY", PROVIDER_KEY_ENV) for r in gate.reasons]}))
         return 2
+    if "kepco" in providers and not kepco_gate.allowed:
+        reason = "; ".join(key_reason("kepco", r) for r in kepco_gate.reasons)
+        if not shared:
+            print(dump({"status": "BLOCKED", "http_calls": 0, "reasons": [reason]}))
+            return 2
+        # A missing KEPCO key must not stop the data.go.kr sources; the skip is reported.
+        skipped["kepco"] = reason
+        providers = shared
     today = now_kst().date()
     if args.daily:
         windows, snapshot = daily_windows(today, providers, args.lookback_days), today.isoformat()
@@ -244,40 +270,49 @@ def main(argv=None):
     init_store(store)
     budget = OperationBudget(settings.database_path, default_limit=min(20, settings.live_max_calls_per_day),
                              max_per_run=min(args.max_calls, settings.live_max_calls_per_run), scope="service")
+    # KEPCO has its own host and key, so its calls never spend the data.go.kr run budget.
+    kepco_budget = OperationBudget(settings.database_path, default_limit=KEPCO_MAX_CALLS_PER_DAY,
+                                   max_per_run=KEPCO_MAX_CALLS_PER_RUN, scope="service")
     run_id = new_run_id("provider-collect")
     runs = RunRepository(conn)
     runs.start(run_id=run_id, command="provider-collect", data_mode="real", live=True, status="RUNNING",
                max_calls_run=budget.max_per_run, catalog_sha256=catalog.sha256)
-    report = {"run_id": run_id, "providers": {}, "jobs": [], "details": {}, "snapshot": snapshot,
+    report = {"run_id": run_id, "providers": {}, "jobs": [], "details": {}, "snapshot": snapshot, "skipped": skipped,
               "staging_database": str(folder / "notices.sqlite3"),
               "scope": "API request range only; construction/site/eligibility and revision semantics need review"}
     status = "PARTIAL"
+    groups = [(settings, gate, budget, [w for w in windows if w[0] not in OWN_KEY_PROVIDERS]),
+              (kepco_settings, kepco_gate, kepco_budget, [w for w in windows if w[0] in OWN_KEY_PROVIDERS])]
     try:
-        with DataGoKrClient(settings=settings, catalog=catalog, gate=gate, budget=budget,
-                            recorder=ResponseRecorder(conn, settings.raw_response_dir, "real"), run_id=run_id) as client:
-            for p, b, e in windows:
-                job = collect_provider(client, budget, store, p, b, e, args.rows, catalog.sha256, snapshot)
-                report["providers"][p] = job
-                report["jobs"].append(job)
-                print(p, b.isoformat(), e.isoformat(), job["status"], job["received"], "/", job["total_count"], flush=True)
-                if p in DETAIL_OPERATIONS and job["received"]:
-                    details = collect_details(client, store, p, job["job_id"], args.max_details)
-                    report["details"][p] = details
-                    print(p, "details", dump(details), flush=True)
+        for group_settings, group_gate, group_budget, group_windows in groups:
+            if not group_windows:
+                continue
+            with DataGoKrClient(settings=group_settings, catalog=catalog, gate=group_gate, budget=group_budget,
+                                recorder=ResponseRecorder(conn, settings.raw_response_dir, "real"), run_id=run_id) as client:
+                for p, b, e in group_windows:
+                    job = collect_provider(client, group_budget, store, p, b, e, args.rows, catalog.sha256, snapshot)
+                    report["providers"][p] = job
+                    report["jobs"].append(job)
+                    print(p, b.isoformat(), e.isoformat(), job["status"], job["received"], "/", job["total_count"], flush=True)
+                    if p in DETAIL_OPERATIONS and job["received"]:
+                        details = collect_details(client, store, p, job["job_id"], args.max_details)
+                        report["details"][p] = details
+                        print(p, "details", dump(details), flush=True)
         if all(j["status"] == "COMPLETE_RANGE" for j in report["jobs"]):
             status = "COMPLETED"
     except Exception as exc:
         report["error"] = redact(f"{type(exc).__name__}: {exc}")
         status = "FAILED"
     finally:
-        report.update(status=status, http_calls=budget.run_used)
+        calls = budget.run_used + kepco_budget.run_used
+        report.update(status=status, http_calls=calls)
         path = folder / f"{run_id}.json"
         path.write_text(dump(report), encoding="utf-8")
-        runs.finish(run_id, status=status, calls_attempted=budget.run_used,
+        runs.finish(run_id, status=status, calls_attempted=calls,
                     stop_reason="API range pages saved; see staging collection status", notes={"report": str(path)})
         store.close()
         conn.close()
-    print(dump({"report": str(path), "status": status, "http_calls": budget.run_used}))
+    print(dump({"report": str(path), "status": status, "http_calls": calls, "skipped": skipped}))
     return 0 if status == "COMPLETED" else 1
 
 

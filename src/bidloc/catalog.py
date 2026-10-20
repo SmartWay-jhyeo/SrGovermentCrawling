@@ -16,8 +16,11 @@ from urllib.parse import urlsplit
 import yaml
 
 ALLOWED_STATUSES = frozenset({"DOCUMENTED", "LIVE_VERIFIED", "UNVERIFIED", "BLOCKED"})
-ALLOWED_HOSTS = frozenset({"apis.data.go.kr"})
+# bigdata.kepco.co.kr: 한전 전력데이터 개방포털(전자입찰 계약정보). 별도 인증키(KEPCO_API_KEY)로만 호출한다.
+ALLOWED_HOSTS = frozenset({"apis.data.go.kr", "bigdata.kepco.co.kr"})
 _OP_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9]*$")
+# Some hosts name an operation with a file suffix (KEPCO: electContract.do); the name itself stays plain.
+_PATH_SUFFIX = re.compile(r"^\.[a-z]{1,5}$")
 _SERVICE_ID = re.compile(r"^[a-z][a-z0-9_]*$")
 _PARAM_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -51,7 +54,7 @@ class OperationSpec:
 
     @property
     def url(self) -> str:
-        return f"{self.base_url}/{self.name}"
+        return f"{self.base_url}/{self.name}{self.raw.get('path_suffix') or ''}"
 
 
 @dataclass(frozen=True)
@@ -142,6 +145,9 @@ def validate_catalog_data(data: Any) -> list[str]:
                     errors.append(f"{where}: success_result_codes에는 실응답 근거(live_evidence)가 필요하다")
             if not op.get("auth_param"):
                 errors.append(f"{where}: auth_param이 없다")
+            suffix = op.get("path_suffix")
+            if suffix is not None and not (isinstance(suffix, str) and _PATH_SUFFIX.match(suffix)):
+                errors.append(f"{where}: path_suffix 형식 오류")
             seen: set[str] = set()
             for param in op.get("request_params") or []:
                 pname = str(param.get("name", ""))
