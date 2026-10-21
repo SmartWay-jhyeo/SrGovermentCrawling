@@ -110,6 +110,13 @@ def test_data_list_root_is_a_success_and_errcd_body_is_an_error():
         error = parse_body(body)
         assert error.kind == "flat_error" and error.result_code == code and error.result_msg
         assert classify_response(401, error).outcome not in DATA_OK
+    # A day without notices (weekends, or a day not loaded yet) answers HTTP 404 NotFound (NAS 2026-10-21).
+    empty = parse_body(b'{"errCd":"404","errMsg":"NotFound"}')
+    assert empty.result_code_raw == "404" and classify_response(404, empty).outcome == Outcome.NO_DATA
+    # Amounts may arrive as JSON floats (2026-10-16: 1081.3). They are kept as text, not a malformed answer.
+    floats = parse_body(b'{"data":[{"presumedPrice":59629739.0,"presumedAmount":1081.3}]}')
+    assert floats.items == [{"presumedPrice": "59629739", "presumedAmount": "1081.3"}] and not floats.problems
+    assert classify_response(200, floats).outcome == Outcome.SUCCESS
     # Anything else under "data", or extra root keys, is not taken as a KEPCO answer.
     assert parse_body(b'{"data":"x"}').kind == "unknown"
     assert parse_body(b'{"data":[],"other":1}').kind == "unknown"
@@ -134,6 +141,15 @@ def test_single_page_job_is_complete_without_paging_parameters():
     again = collect_provider(SimpleNamespace(call=call), SimpleNamespace(mark_quota_exhausted=lambda *a: None),
                              store, "kepco", DAY, DAY, 100, "synthetic", "2026-10-07")
     assert again["job_id"] == job["job_id"] and len(calls) == 1
+
+
+def test_kepco_day_without_notices_is_an_empty_complete_range():
+    store = sqlite3.connect(":memory:"); init_store(store)
+    call = lambda *a, **k: SimpleNamespace(items=[], total_count=None, page_no=None, source_response_ids=[1],
+                                           data_ok=True, outcome=Outcome.NO_DATA)
+    job = collect_provider(SimpleNamespace(call=call), SimpleNamespace(mark_quota_exhausted=lambda *a: None),
+                           store, "kepco", DAY, DAY, 100, "synthetic", "2026-10-07")
+    assert job["status"] == "COMPLETE_RANGE" and job["received"] == 0 and job["total_count"] == 0
 
 
 def test_kepco_daily_windows_are_one_day_each():

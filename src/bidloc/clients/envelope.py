@@ -68,9 +68,11 @@ def _to_int(raw: Any) -> int | None:
     return None
 
 
-def _scalar_to_str(value: Any, problems: list[str], field_name: str) -> str | None:
+def _scalar_to_str(value: Any, problems: list[str], field_name: str, allow_float: bool = False) -> str | None:
     if value is None:
         return None
+    if allow_float and isinstance(value, float) and not isinstance(value, bool):
+        return str(int(value)) if value.is_integer() else repr(value)
     if isinstance(value, bool):
         problems.append(f"boolean value in field {field_name}")
         return str(value).lower()
@@ -148,7 +150,8 @@ def _parse_json(text: str) -> ParsedBody:
     # 정확히 이 형태일 때만 정상 응답으로 읽고, 페이지가 없는 출처라 배열 길이를 건수로 쓴다.
     if set(data) == {"data"} and isinstance(data["data"], list):
         parsed = ParsedBody(fmt="json", kind="standard", shape="json:data-list", result_code="00")
-        parsed.items = _json_item_list(data["data"], parsed.problems)
+        # Amounts can be JSON floats here (2026-10-16: 1081.3); won amounts stay far below float precision limits.
+        parsed.items = _json_item_list(data["data"], parsed.problems, allow_float=True)
         parsed.total_count = None if parsed.items is None else len(parsed.items)
         return parsed
     # 같은 출처의 오류는 HTTP 401에 {"errCd": "401", "errMsg": "InvalidApiKeyException"} 형태다(기간 초과는 errCd 400).
@@ -157,6 +160,10 @@ def _parse_json(text: str) -> ParsedBody:
         parsed.result_code_raw = None if data["errCd"] is None else str(data["errCd"])
         parsed.result_code = normalize_result_code(data["errCd"])
         parsed.result_msg = None if data["errMsg"] is None else str(data["errMsg"])
+        # A day without notices answers 404 NotFound (weekends, and a day not loaded yet; NAS 2026-10-21). It is the
+        # standard "no data" (03); the received code stays in result_code_raw.
+        if parsed.result_code == "404" and (parsed.result_msg or "").strip() == "NotFound":
+            parsed.result_code = "03"
         return parsed
 
     root = data.get("response") if isinstance(data.get("response"), dict) else None
@@ -227,13 +234,13 @@ def _json_items(body: dict[str, Any], problems: list[str]) -> tuple[str, list[It
     return "items=unexpected", None
 
 
-def _json_item_list(raw_items: list[Any], problems: list[str]) -> list[ItemDict] | None:
+def _json_item_list(raw_items: list[Any], problems: list[str], allow_float: bool = False) -> list[ItemDict] | None:
     out: list[ItemDict] = []
     for idx, element in enumerate(raw_items):
         if not isinstance(element, dict):
             problems.append(f"item #{idx} is not object")
             return None
-        out.append({str(k): _scalar_to_str(v, problems, str(k)) for k, v in element.items()})
+        out.append({str(k): _scalar_to_str(v, problems, str(k), allow_float) for k, v in element.items()})
     return out
 
 
